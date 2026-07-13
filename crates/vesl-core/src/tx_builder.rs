@@ -197,9 +197,10 @@ mod tests {
     #[test]
     fn jam_seeds_manual_matches_seeds_to_noun() {
         // Build a Seed with minimal NoteData
-        let note_data = NoteData::new(vec![
-            NoteDataEntry::new("test-key".to_string(), bytes::Bytes::from(vec![42u8])),
-        ]);
+        let note_data = NoteData::new(vec![NoteDataEntry::new(
+            "test-key".to_string(),
+            nockchain_math::owned_based_noun::OwnedBasedNoun::try_atom(42).unwrap(),
+        )]);
 
         let seed = Seed {
             output_source: None,

@@ -4,9 +4,13 @@
 //! Rust-friendly types. The main type is `SpendableUtxo` which carries the
 //! note name, amount, and raw NoteData for app-specific decoding.
 
+use nockapp::noun::slab::{NockJammer, NounSlab};
+use nockapp::Bytes;
+use nockchain_math::owned_based_noun::OwnedBasedNoun;
 use nockchain_tip5_rs::check_tip5_limbs;
 use nockchain_types::tx_engine::common::Hash as ChainHash;
-use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
+use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry, NoteDataValue};
+use nockvm::noun::NounAllocator;
 
 // ---------------------------------------------------------------------------
 // SpendableUtxo
@@ -48,9 +52,38 @@ impl SpendableUtxo {
 // Protobuf conversion helpers
 // ---------------------------------------------------------------------------
 
+/// Upper bound on a note-data blob before `cue` (AUDIT 2026-05-19 H-10). `cue`
+/// grows its slab by doubling; an attacker-crafted blob can otherwise drive
+/// allocator overhead well past the input byte length. The gRPC wire is the only
+/// place untrusted note-data bytes enter, so the cap lives here.
+const MAX_BLOB_LEN: usize = 1 << 20;
+
+/// Decode one protobuf note-data entry (a jammed noun) into a `NoteDataValue`.
+///
+/// Every entry is read as a generic based noun, including the chain's typed keys
+/// (`lock`, `bridge`, `bridge-w`). Those typed payloads are not publicly
+/// decodable outside `nockchain-types`, and they do not need to be: a typed
+/// variant and the `Noun` variant re-encode to the *same* noun, so the wire form
+/// round-trips either way. Callers here read their own app keys.
+///
+/// Returns `None` if the blob is oversized, does not cue, or is not a based noun
+/// (every atom must be a base-field element, or the chain would reject it).
+fn decode_note_data_value(blob: &[u8]) -> Option<NoteDataValue> {
+    if blob.len() > MAX_BLOB_LEN {
+        return None;
+    }
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    let noun = slab.cue_into(Bytes::copy_from_slice(blob)).ok()?;
+    let space = slab.noun_space();
+    OwnedBasedNoun::from_noun(noun, &space)
+        .ok()
+        .map(NoteDataValue::Noun)
+}
+
 /// Extract `NoteData` from a protobuf Note (v0 or v1 variant).
 ///
-/// Only NoteV1 carries `note_data`; legacy v0 notes return `None`.
+/// Only NoteV1 carries `note_data`; legacy v0 notes return `None`. An entry that
+/// fails to decode is dropped rather than poisoning the whole note.
 pub fn extract_note_data(note: &nockapp_grpc::pb::common::v2::Note) -> Option<NoteData> {
     use nockapp_grpc::pb::common::v2::note::NoteVersion;
 
@@ -61,7 +94,10 @@ pub fn extract_note_data(note: &nockapp_grpc::pb::common::v2::Note) -> Option<No
             let entries: Vec<NoteDataEntry> = pd
                 .entries
                 .iter()
-                .map(|e| NoteDataEntry::new(e.key.clone(), e.blob.clone().into()))
+                .filter_map(|e| {
+                    decode_note_data_value(&e.blob)
+                        .map(|value| NoteDataEntry::new(e.key.clone(), value))
+                })
                 .collect();
             if entries.is_empty() {
                 None

@@ -240,7 +240,7 @@ pub fn build_witness(
     };
 
     let pkh_sig_entry = PkhSignatureEntry {
-        hash: pkh,
+        pkh,
         pubkey,
         signature,
     };
@@ -425,12 +425,14 @@ mod tests {
 
     #[test]
     fn build_seeds_valid() {
+        use nockchain_math::owned_based_noun::OwnedBasedNoun;
         use nockchain_types::tx_engine::common::Hash;
         use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
 
-        let note_data = NoteData::new(vec![
-            NoteDataEntry::new("test".to_string(), bytes::Bytes::from(vec![1u8])),
-        ]);
+        let note_data = NoteData::new(vec![NoteDataEntry::new(
+            "test".to_string(),
+            OwnedBasedNoun::try_atom(1).unwrap(),
+        )]);
         let lock_root = Hash::from_limbs(&[1, 2, 3, 4, 5]);
         let parent = Hash::from_limbs(&[10, 20, 30, 40, 50]);
 
@@ -441,12 +443,14 @@ mod tests {
 
     #[test]
     fn build_seeds_excessive_fee_rejected() {
+        use nockchain_math::owned_based_noun::OwnedBasedNoun;
         use nockchain_types::tx_engine::common::Hash;
         use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
 
-        let note_data = NoteData::new(vec![
-            NoteDataEntry::new("test".to_string(), bytes::Bytes::from(vec![1u8])),
-        ]);
+        let note_data = NoteData::new(vec![NoteDataEntry::new(
+            "test".to_string(),
+            OwnedBasedNoun::try_atom(1).unwrap(),
+        )]);
         let lock_root = Hash::from_limbs(&[1, 2, 3, 4, 5]);
         let parent = Hash::from_limbs(&[10, 20, 30, 40, 50]);
 
