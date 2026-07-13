@@ -1,3 +1,5 @@
 [toolchain]
-channel = "nightly"
-components = ["clippy", "rustfmt"]
+# Pinned to the nockchain base's nightly (rustc 1.96) so the whole path-dep
+# graph compiles under one compiler.
+channel = "nightly-2026-04-03"
+components = ["rustfmt", "clippy"]

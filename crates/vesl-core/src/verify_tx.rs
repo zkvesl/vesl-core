@@ -141,7 +141,7 @@ pub async fn fetch_receipt(
         // typed error instead of `unreachable!` so a future change to the
         // upstream enum degrades to a clean error, not a panic.
         TransactionBlockResult::NotFound => {
-            return Err(VerifyTxError::NotFound(tx_hash.to_string()))
+            return Err(VerifyTxError::NotFound(tx_hash.to_string()));
         }
     };
 
@@ -154,7 +154,7 @@ pub async fn fetch_receipt(
         TransactionDetailsResult::Pending => (None, None, Vec::new(), Vec::new(), None),
         // AUDIT 2026-05-21 L-03: see the block match above.
         TransactionDetailsResult::NotFound => {
-            return Err(VerifyTxError::NotFound(tx_hash.to_string()))
+            return Err(VerifyTxError::NotFound(tx_hash.to_string()));
         }
     };
 

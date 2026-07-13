@@ -4,13 +4,12 @@
 //! without direct deps on the lower crates.
 
 // tip5 primitives
-pub use nockchain_tip5_rs::{
-    format_tip5, hash_leaf, hash_pair, tip5_to_atom_le_bytes, verify_proof, MerkleTree, ProofNode,
-    Tip5Hash, TIP5_ZERO,
-};
-
 // Chain/wallet clients (for Settle/Forge users)
 pub use nockchain_client_rs::{ChainClient, ChainConfig, WalletClient, WalletConfig};
+pub use nockchain_tip5_rs::{
+    MerkleTree, ProofNode, TIP5_ZERO, Tip5Hash, format_tip5, hash_leaf, hash_pair,
+    tip5_to_atom_le_bytes, verify_proof,
+};
 
 // Noun building. Re-exported as a type alias with the default jammer
 // bound. The underlying `nockapp::NounSlab` is generic over `J: Jammer`;
@@ -91,5 +90,7 @@ pub trait CommitmentVerifier: Send + Sync {
 /// intent coordination with commitment verification — see
 /// `.dev/BIFURCATE_INTENT.md` and `.dev/GRAFT_REFACTOR.md` for the taxonomy
 /// cleanup. Will be removed in the next minor release.
-#[deprecated(note = "renamed to CommitmentVerifier; IntentVerifier will be removed in the next minor release")]
+#[deprecated(
+    note = "renamed to CommitmentVerifier; IntentVerifier will be removed in the next minor release"
+)]
 pub use self::CommitmentVerifier as IntentVerifier;

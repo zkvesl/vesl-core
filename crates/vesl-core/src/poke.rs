@@ -130,10 +130,7 @@ pub enum RejectionReason {
     /// Hull orchestrator's `[%rbac-has-perm pubkey perm]` peek returned
     /// `%.n`; the kernel was never poked. Constructed by the hull, not
     /// produced by [`classify_effects`] — there are no `raw_effects`.
-    RbacDenied {
-        pubkey: String,
-        perm: String,
-    },
+    RbacDenied { pubkey: String, perm: String },
 
     /// Empty effect list with no error cord and no typed denial.
     /// Pre–typed-denial settle-graft, this collapses gate-clean-deny + any
@@ -231,9 +228,10 @@ pub fn classify_effects(effects: Vec<NounSlab>) -> PokeOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nock_noun_rs::{make_atom_in, make_tag_in};
     use nockvm::noun::{D, T};
+
+    use super::*;
 
     /// Build a `[<tag> <tail>]` effect slab. `tail_atom_bytes = None`
     /// yields a `~`-tailed effect (atom 0); `Some(bytes)` yields a cord tail.
@@ -265,11 +263,7 @@ mod tests {
         let effect = build_effect("settle-error", Some(b"settle-graft: malformed payload"));
         match classify_effects(vec![effect]) {
             PokeOutcome::Rejected {
-                reason:
-                    RejectionReason::KernelError {
-                        cord,
-                        raw_effects,
-                    },
+                reason: RejectionReason::KernelError { cord, raw_effects },
             } => {
                 assert_eq!(cord, "settle-graft: malformed payload");
                 assert_eq!(raw_effects.len(), 1);
@@ -283,11 +277,7 @@ mod tests {
         let effect = build_effect("settle-register-rejected", None);
         match classify_effects(vec![effect]) {
             PokeOutcome::Rejected {
-                reason:
-                    RejectionReason::KernelRejected {
-                        tag,
-                        raw_effects,
-                    },
+                reason: RejectionReason::KernelRejected { tag, raw_effects },
             } => {
                 assert_eq!(tag, "settle-register-rejected");
                 assert_eq!(raw_effects.len(), 1);
@@ -409,7 +399,10 @@ mod tests {
 
         // Rejected::GateDenied
         let outcome = classify_effects(vec![build_effect("settle-denied", Some(b"x"))]);
-        assert_eq!(outcome.effect_head_tags(), vec!["settle-denied".to_string()]);
+        assert_eq!(
+            outcome.effect_head_tags(),
+            vec!["settle-denied".to_string()]
+        );
     }
 
     #[test]

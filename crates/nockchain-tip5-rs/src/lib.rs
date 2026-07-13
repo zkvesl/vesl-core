@@ -36,8 +36,7 @@
 //! assert!(!verify_proof(b"TAMPERED", &proof, &root));
 //! ```
 
-use nockchain_math::belt::Belt;
-use nockchain_math::belt::PRIME;
+use nockchain_math::belt::{Belt, PRIME};
 use nockchain_math::tip5::hash::{hash_10, hash_varlen};
 use subtle::ConstantTimeEq;
 
@@ -242,12 +241,18 @@ pub fn verify_proof(leaf_data: &[u8], proof: &[ProofNode], expected_root: &Tip5H
     // release build would otherwise hash unreduced limbs and reach a
     // different digest than the Hoon verifier.
     if let Err(e) = check_tip5_limbs(expected_root) {
-        tracing::warn!(limb = e.limb, "verify_proof: expected_root limb off-field, rejecting");
+        tracing::warn!(
+            limb = e.limb,
+            "verify_proof: expected_root limb off-field, rejecting"
+        );
         return false;
     }
     for node in proof {
         if let Err(e) = check_tip5_limbs(&node.hash) {
-            tracing::warn!(limb = e.limb, "verify_proof: proof node limb off-field, rejecting");
+            tracing::warn!(
+                limb = e.limb,
+                "verify_proof: proof node limb off-field, rejecting"
+            );
             return false;
         }
     }
@@ -372,7 +377,11 @@ impl MerkleTree {
         let mut idx = index;
 
         for level in &self.levels[..self.levels.len() - 1] {
-            let sibling_idx = if idx.is_multiple_of(2) { idx + 1 } else { idx - 1 };
+            let sibling_idx = if idx.is_multiple_of(2) {
+                idx + 1
+            } else {
+                idx - 1
+            };
 
             let sibling_hash = if sibling_idx < level.len() {
                 level[sibling_idx]
@@ -411,10 +420,8 @@ mod tests {
     /// Enterprise scenario leaves — matches the Hoon red-team test data.
     fn enterprise_leaves() -> Vec<&'static [u8]> {
         vec![
-            b"The AI read this secret.",
-            b"Patient record: blood-type A+",
-            b"Trading algo: momentum signal",
-            b"NDA clause 4: non-compete",
+            b"The AI read this secret.", b"Patient record: blood-type A+",
+            b"Trading algo: momentum signal", b"NDA clause 4: non-compete",
         ]
     }
 
@@ -574,7 +581,10 @@ mod tests {
         let tree = MerkleTree::build(&leaves).unwrap();
         assert!(matches!(
             tree.proof(2),
-            Err(MerkleTreeError::IndexOutOfBounds { index: 2, leaf_count: 2 })
+            Err(MerkleTreeError::IndexOutOfBounds {
+                index: 2,
+                leaf_count: 2
+            })
         ));
         assert!(tree.proof(1).is_ok());
     }

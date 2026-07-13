@@ -10,7 +10,7 @@
 //! header (`protocol/lib/clock-graft.hoon`) for why boot-offset and
 //! block-time sources are deferred.
 
-use nock_noun_rs::{make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, make_tag_in};
 use nockvm::noun::{D, T};
 
 /// Build a `[%clock-tick ~]` poke.
@@ -24,8 +24,9 @@ pub fn build_clock_tick_poke() -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_clock_tick_poke_emits_nonempty_jam() {

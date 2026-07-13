@@ -22,10 +22,10 @@
 //! `%settle-settle` and avoids collision with `%mint-commit`.
 
 use nock_noun_rs::{
-    atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in,
-    slab_jam_to_bytes, NounSlab,
+    NounSlab, atom_from_u64, make_atom_in, make_list_in, make_loobean, make_tag_in,
+    slab_jam_to_bytes,
 };
-use nockchain_tip5_rs::{tip5_to_atom_le_bytes, ProofNode, Tip5Hash};
+use nockchain_tip5_rs::{ProofNode, Tip5Hash, tip5_to_atom_le_bytes};
 use nockchain_types::tx_engine::common::{SchnorrPubkey, SchnorrSignature};
 use nockvm::noun::{Noun, T};
 
@@ -56,24 +56,14 @@ pub fn build_settle_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
 /// the gate casts `data` into a structured cell. Use
 /// [`build_settle_note_poke_with_data`] (or one of the per-gate
 /// convenience builders) to thread the structured payload through.
-pub fn build_settle_note_poke(
-    note_id: u64,
-    hull: u64,
-    root: &Tip5Hash,
-    data: &[u8],
-) -> NounSlab {
+pub fn build_settle_note_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_note_poke_with_data(note_id, hull, root, |slab| make_atom_in(slab, data))
 }
 
 /// Build a `[%settle-verify jammed-graft-payload]` poke for a single-leaf
 /// commitment. Same payload shape as `settle-note` but pure verification:
 /// no state transition, no replay check.
-pub fn build_settle_verify_poke(
-    note_id: u64,
-    hull: u64,
-    root: &Tip5Hash,
-    data: &[u8],
-) -> NounSlab {
+pub fn build_settle_verify_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_verify_poke_with_data(note_id, hull, root, |slab| make_atom_in(slab, data))
 }
 
@@ -295,12 +285,7 @@ pub fn build_vesl_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
     since = "0.6.0",
     note = "renamed in Phase 12A; use build_settle_note_poke"
 )]
-pub fn build_vesl_settle_poke(
-    note_id: u64,
-    hull: u64,
-    root: &Tip5Hash,
-    data: &[u8],
-) -> NounSlab {
+pub fn build_vesl_settle_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_note_poke(note_id, hull, root, data)
 }
 
@@ -309,12 +294,7 @@ pub fn build_vesl_settle_poke(
     since = "0.6.0",
     note = "renamed in Phase 12A; use build_settle_verify_poke"
 )]
-pub fn build_vesl_verify_poke(
-    note_id: u64,
-    hull: u64,
-    root: &Tip5Hash,
-    data: &[u8],
-) -> NounSlab {
+pub fn build_vesl_verify_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_verify_poke(note_id, hull, root, data)
 }
 
@@ -415,10 +395,11 @@ pub fn build_settle_poke_jammed(verb: &str, payload: &[u8]) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Mint;
     use nock_noun_rs::new_stack;
     use nockvm::noun::NounAllocator;
+
+    use super::*;
+    use crate::Mint;
 
     fn fixture_root() -> Tip5Hash {
         let data: [&[u8]; 1] = [b"hello world"];
@@ -509,8 +490,7 @@ mod tests {
 
     #[test]
     fn build_settle_poke_jammed_wraps_payload() {
-        let payload =
-            build_graft_single_leaf_payload_jammed(1, 1, &fixture_root(), b"hello");
+        let payload = build_graft_single_leaf_payload_jammed(1, 1, &fixture_root(), b"hello");
         let slab = build_settle_poke_jammed("settle-verify", &payload);
         let bytes = slab_jam_to_bytes(&slab);
         assert!(!bytes.is_empty());
@@ -535,9 +515,8 @@ mod tests {
         // identical jam output.
         let root = fixture_root();
         let flat = build_settle_note_poke(11, 2, &root, b"x");
-        let via_closure = build_settle_note_poke_with_data(11, 2, &root, |slab| {
-            make_atom_in(slab, b"x")
-        });
+        let via_closure =
+            build_settle_note_poke_with_data(11, 2, &root, |slab| make_atom_in(slab, b"x"));
         let a = slab_jam_to_bytes(&flat);
         let b = slab_jam_to_bytes(&via_closure);
         assert_eq!(a, b);
@@ -581,14 +560,8 @@ mod tests {
     #[test]
     fn build_settle_note_ed25519_poke_emits_nonempty_jam() {
         let root = fixture_root();
-        let slab = build_settle_note_ed25519_poke(
-            42,
-            1,
-            &root,
-            b"attestation",
-            &[0u8; 64],
-            &[0u8; 32],
-        );
+        let slab =
+            build_settle_note_ed25519_poke(42, 1, &root, b"attestation", &[0u8; 64], &[0u8; 32]);
         let bytes = slab_jam_to_bytes(&slab);
         assert!(!bytes.is_empty());
     }
@@ -596,8 +569,7 @@ mod tests {
     #[test]
     fn build_settle_note_membership_poke_emits_nonempty_jam() {
         let root = fixture_root();
-        let slab =
-            build_settle_note_membership_poke(7, 1, &root, b"alice", &fixture_proof());
+        let slab = build_settle_note_membership_poke(7, 1, &root, b"alice", &fixture_proof());
         let bytes = slab_jam_to_bytes(&slab);
         assert!(!bytes.is_empty());
     }
@@ -605,8 +577,7 @@ mod tests {
     #[test]
     fn build_settle_note_bounded_poke_emits_nonempty_jam() {
         let root = fixture_root();
-        let slab =
-            build_settle_note_bounded_poke(9, 1, &root, 42, (10, 100), &fixture_proof());
+        let slab = build_settle_note_bounded_poke(9, 1, &root, 42, (10, 100), &fixture_proof());
         let bytes = slab_jam_to_bytes(&slab);
         assert!(!bytes.is_empty());
     }

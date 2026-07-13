@@ -5,7 +5,7 @@
 //! without constructing a treap-shaped Hoon set. The graft `silt`s
 //! the list into a set on the way in.
 
-use nock_noun_rs::{atom_from_u64, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_tag_in};
 use nockvm::noun::{D, Noun, T};
 
 /// Build a `[%rbac-grant pubkey=@ perms=(list @t)]` poke.
@@ -46,8 +46,9 @@ fn build_cord_list_in(slab: &mut NounSlab, items: &[&str]) -> Noun {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_rbac_grant_poke_emits_nonempty_jam() {

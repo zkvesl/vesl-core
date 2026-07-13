@@ -12,7 +12,6 @@
 use std::collections::{HashSet, VecDeque};
 
 use anyhow::Result;
-
 use nock_noun_rs::NounSlab;
 use nockchain_client_rs::ChainClient;
 use nockchain_tip5_rs::Tip5Hash;
@@ -360,7 +359,12 @@ mod tests {
 
         let result = settler.settle(&payload).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("root not registered"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("root not registered")
+        );
     }
 
     // --- Pre-flight validation tests ---
@@ -372,7 +376,12 @@ mod tests {
         settler.register_root(root).unwrap();
 
         let payload = GraftPayload {
-            note: Note { id: 1, hull: 7, root, state: NoteState::Pending },
+            note: Note {
+                id: 1,
+                hull: 7,
+                root,
+                state: NoteState::Pending,
+            },
             data: vec![],
             expected_root: root,
         };
@@ -395,7 +404,12 @@ mod tests {
         settler.register_root(root).unwrap();
 
         let payload = GraftPayload {
-            note: Note { id: 1, hull: 7, root, state: NoteState::Settled },
+            note: Note {
+                id: 1,
+                hull: 7,
+                root,
+                state: NoteState::Settled,
+            },
             data: vec![],
             expected_root: root,
         };
@@ -412,7 +426,12 @@ mod tests {
         let settler = Settle::with_verifier(MockVerifier { should_pass: true });
 
         let payload = GraftPayload {
-            note: Note { id: 1, hull: 7, root, state: NoteState::Pending },
+            note: Note {
+                id: 1,
+                hull: 7,
+                root,
+                state: NoteState::Pending,
+            },
             data: vec![],
             expected_root: root,
         };

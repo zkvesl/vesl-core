@@ -12,7 +12,7 @@
 use anyhow::Result;
 use nockapp_grpc::pb::common::v1::PageRequest;
 use nockapp_grpc::pb::public::v2::nockchain_block_service_client::NockchainBlockServiceClient;
-use nockapp_grpc::pb::public::v2::{get_blocks_response, GetBlocksRequest};
+use nockapp_grpc::pb::public::v2::{GetBlocksRequest, get_blocks_response};
 
 #[tokio::main]
 async fn main() -> Result<()> {

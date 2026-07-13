@@ -33,8 +33,8 @@
 //! See zkvesl-docs `reference/sdk.md` "Peek calls from Rust" for
 //! worked examples.
 
-use nock_noun_rs::{atom_from_u64, make_tag_in, NounSlab};
-use nockvm::noun::{Noun, NounAllocator, D, T};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_tag_in};
+use nockvm::noun::{D, Noun, NounAllocator, T};
 
 /// Build a `[%<tag> hull=@ ~]` peek path slab.
 ///
@@ -127,8 +127,8 @@ pub fn peek_loobean(result: &NounSlab) -> Option<bool> {
     let value_cell = maybe_value.in_space(&space).as_cell().ok()?;
     let atom = value_cell.tail().as_atom().ok()?;
     match trim_trailing_zeros(atom.as_ne_bytes()) {
-        [] => Some(true),    // atom 0 = %.y
-        [1] => Some(false),  // atom 1 = %.n
+        [] => Some(true),   // atom 0 = %.y
+        [1] => Some(false), // atom 1 = %.n
         _ => None,
     }
 }
@@ -238,7 +238,10 @@ pub fn peek_atom_u64_strict(
         return Err(PeekError::BadUnit);
     }
     let value = unit.tail().as_atom().map_err(|_| PeekError::BadUnit)?;
-    value.as_u64().map(Some).map_err(|_| PeekError::ValueTooLarge)
+    value
+        .as_u64()
+        .map(Some)
+        .map_err(|_| PeekError::ValueTooLarge)
 }
 
 /// Byte-payload counterpart to [`peek_atom_u64_strict`].
@@ -316,10 +319,7 @@ pub fn peek_unit_atom_strict(
 /// `(unit (list T))` peek — the inner value is a cell, not an atom,
 /// so the unwrap returns `None` even when items are present. Profiles
 /// C and I (R3) hit this.
-pub fn peek_unit_list<T>(
-    result: &NounSlab,
-    decode: impl Fn(Noun) -> Option<T>,
-) -> Option<Vec<T>> {
+pub fn peek_unit_list<T>(result: &NounSlab, decode: impl Fn(Noun) -> Option<T>) -> Option<Vec<T>> {
     let space = result.noun_space();
     let maybe_value = strip_triple_unit_envelope(result)?;
     let handle = maybe_value.in_space(&space);
@@ -428,8 +428,8 @@ pub fn decode_effect_loobean(effect: &NounSlab) -> Option<bool> {
     let cell = root.in_space(&space).as_cell().ok()?;
     let atom = cell.tail().as_atom().ok()?;
     match trim_trailing_zeros(atom.as_ne_bytes()) {
-        [] => Some(true),    // atom 0 = %.y
-        [1] => Some(false),  // atom 1 = %.n
+        [] => Some(true),   // atom 0 = %.y
+        [1] => Some(false), // atom 1 = %.n
         _ => None,
     }
 }
@@ -597,7 +597,10 @@ mod tests {
         let slab = wrap_triple_unit(|_| D(0));
         let space = slab.noun_space();
         let result: Option<Vec<u64>> = peek_unit_list(&slab, |n| {
-            n.in_space(&space).as_atom().ok().and_then(|a| a.as_u64().ok())
+            n.in_space(&space)
+                .as_atom()
+                .ok()
+                .and_then(|a| a.as_u64().ok())
         });
         assert_eq!(result, Some(Vec::new()));
     }
@@ -614,7 +617,10 @@ mod tests {
         });
         let space = slab.noun_space();
         let result: Option<Vec<u64>> = peek_unit_list(&slab, |n| {
-            n.in_space(&space).as_atom().ok().and_then(|a| a.as_u64().ok())
+            n.in_space(&space)
+                .as_atom()
+                .ok()
+                .and_then(|a| a.as_u64().ok())
         });
         assert_eq!(result, Some(vec![1u64, 2, 3]));
     }

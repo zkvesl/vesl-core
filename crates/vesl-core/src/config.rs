@@ -9,9 +9,7 @@
 use std::fmt;
 
 use nockchain_math::belt::Belt;
-use vesl_wallet::{
-    VeslWallet, ROLE_INTENT, ROLE_X402, VESL_COIN_TYPE_PLACEHOLDER,
-};
+use vesl_wallet::{ROLE_INTENT, ROLE_X402, VESL_COIN_TYPE_PLACEHOLDER, VeslWallet};
 
 use crate::signing;
 
@@ -172,8 +170,14 @@ impl WalletConfig {
             seed_phrase: None,
             coin_type: VESL_COIN_TYPE_PLACEHOLDER,
             account: 0,
-            intent: WalletRoleConfig { role: ROLE_INTENT, index: 0 },
-            payment: WalletRoleConfig { role: ROLE_X402, index: 0 },
+            intent: WalletRoleConfig {
+                role: ROLE_INTENT,
+                index: 0,
+            },
+            payment: WalletRoleConfig {
+                role: ROLE_X402,
+                index: 0,
+            },
         }
     }
 
@@ -251,11 +255,7 @@ impl SettlementConfig {
         // 1. Determine mode: CLI > toml > infer from flags > local
         let mode = overrides
             .mode
-            .or_else(|| {
-                toml.settlement_mode
-                    .as_deref()
-                    .and_then(|s| s.parse().ok())
-            })
+            .or_else(|| toml.settlement_mode.as_deref().and_then(|s| s.parse().ok()))
             .unwrap_or_else(|| {
                 // Backward compat: --chain-endpoint or --submit without mode -> fakenet
                 if overrides.chain_endpoint.is_some() || overrides.submit {
@@ -277,9 +277,9 @@ impl SettlementConfig {
 
         match mode {
             SettlementMode::Local => Ok(Self::resolve_local(wallet_cfg)),
-            SettlementMode::Fakenet => {
-                Ok(Self::resolve_fakenet(overrides, toml, default_signing_key, wallet_cfg))
-            }
+            SettlementMode::Fakenet => Ok(Self::resolve_fakenet(
+                overrides, toml, default_signing_key, wallet_cfg,
+            )),
             SettlementMode::Dumbnet => Self::resolve_dumbnet(overrides, toml, wallet_cfg),
         }
     }
@@ -385,13 +385,13 @@ impl SettlementConfig {
     /// Build a `ChainConfig` using this settlement config's endpoint and timeout.
     /// Returns `None` for local mode (no endpoint).
     pub fn chain_config(&self) -> Option<nockchain_client_rs::ChainConfig> {
-        self.chain_endpoint.as_ref().map(|ep| {
-            nockchain_client_rs::ChainConfig {
+        self.chain_endpoint
+            .as_ref()
+            .map(|ep| nockchain_client_rs::ChainConfig {
                 endpoint: ep.clone(),
                 poll_interval: std::time::Duration::from_secs(5),
                 accept_timeout: std::time::Duration::from_secs(self.accept_timeout_secs),
-            }
-        })
+            })
     }
 
     /// Return the per-role intent signer as a legacy `[Belt; 8]`. The
@@ -421,8 +421,7 @@ impl SettlementConfig {
             .as_ref()
             .ok_or(signing::SigningError::NoSeedPhrase)?;
         let (role, index) = pick(wallet_cfg);
-        wallet_role_belts(wallet_cfg, role, index)?
-            .ok_or(signing::SigningError::NoSeedPhrase)
+        wallet_role_belts(wallet_cfg, role, index)?.ok_or(signing::SigningError::NoSeedPhrase)
     }
 }
 
@@ -526,14 +525,15 @@ mod tests {
     use super::*;
 
     /// Canonical BIP-39 12-word test vector ("abandon×11 + about").
-    const CANONICAL_MNEMONIC: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon \
+    const CANONICAL_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon \
          abandon abandon abandon about";
 
     #[test]
     fn default_is_local() {
         let toml = SettlementToml::default();
-        let cfg = SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None).unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Local);
         assert!(cfg.chain_endpoint.is_none());
         assert!(cfg.signing_key.is_none());
@@ -550,7 +550,8 @@ mod tests {
             },
             &toml,
             Some([Belt(1); 8]),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Fakenet);
         assert!(cfg.signing_key.is_some());
         assert!(cfg.auto_submit);
@@ -560,10 +561,14 @@ mod tests {
     fn submit_flag_infers_fakenet() {
         let toml = SettlementToml::default();
         let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides { submit: true, ..Default::default() },
+            &SettlementCliOverrides {
+                submit: true,
+                ..Default::default()
+            },
             &toml,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Fakenet);
     }
 
@@ -579,7 +584,8 @@ mod tests {
             },
             &toml,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Local);
         assert!(cfg.chain_endpoint.is_none());
         assert!(!cfg.auto_submit);
@@ -590,10 +596,14 @@ mod tests {
         let toml = SettlementToml::default();
         let demo_key = [Belt(42); 8];
         let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides { mode: Some(SettlementMode::Fakenet), ..Default::default() },
+            &SettlementCliOverrides {
+                mode: Some(SettlementMode::Fakenet),
+                ..Default::default()
+            },
             &toml,
             Some(demo_key),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.chain_endpoint.as_deref(), Some("http://localhost:9090"));
         assert_eq!(cfg.tx_fee, 256);
         assert_eq!(cfg.coinbase_timelock_min, 1);
@@ -610,10 +620,14 @@ mod tests {
             ..Default::default()
         };
         let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides { mode: Some(SettlementMode::Fakenet), ..Default::default() },
+            &SettlementCliOverrides {
+                mode: Some(SettlementMode::Fakenet),
+                ..Default::default()
+            },
             &toml,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.tx_fee, 5000);
         assert_eq!(cfg.coinbase_timelock_min, 10);
         assert_eq!(cfg.chain_endpoint.as_deref(), Some("http://custom:9090"));
@@ -634,7 +648,8 @@ mod tests {
             },
             &toml,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.tx_fee, 7000);
         assert_eq!(cfg.chain_endpoint.as_deref(), Some("http://cli:9090"));
     }
@@ -645,7 +660,9 @@ mod tests {
             settlement_mode: Some("fakenet".into()),
             ..Default::default()
         };
-        let cfg = SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None).unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Fakenet);
     }
 
@@ -663,7 +680,8 @@ mod tests {
             },
             &toml,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(cfg.mode, SettlementMode::Dumbnet);
         assert!(cfg.signing_key.is_some());
         assert!(cfg.auto_submit);
@@ -683,10 +701,14 @@ mod tests {
 
         let toml = SettlementToml::default();
         let fakenet = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides { mode: Some(SettlementMode::Fakenet), ..Default::default() },
+            &SettlementCliOverrides {
+                mode: Some(SettlementMode::Fakenet),
+                ..Default::default()
+            },
             &toml,
             Some([Belt(1); 8]),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(fakenet.can_submit());
     }
 
@@ -714,17 +736,20 @@ mod tests {
                 seed_phrase: Some(CANONICAL_MNEMONIC.into()),
                 coin_type: Some(0xABCD_1234),
                 account: Some(7),
-                intent: Some(WalletRoleToml { role: Some(2), index: Some(11) }),
-                payment: Some(WalletRoleToml { role: Some(4), index: Some(99) }),
+                intent: Some(WalletRoleToml {
+                    role: Some(2),
+                    index: Some(11),
+                }),
+                payment: Some(WalletRoleToml {
+                    role: Some(4),
+                    index: Some(99),
+                }),
             }),
             ..Default::default()
         };
-        let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides::default(),
-            &toml,
-            None,
-        )
-        .unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         let w = cfg.wallet.expect("wallet config should resolve");
         assert_eq!(w.coin_type, 0xABCD_1234);
         assert_eq!(w.account, 7);
@@ -766,12 +791,9 @@ mod tests {
             }),
             ..Default::default()
         };
-        let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides::default(),
-            &toml,
-            None,
-        )
-        .unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         let w = cfg.wallet.expect("wallet config should resolve");
         assert_eq!(w.coin_type, VESL_COIN_TYPE_PLACEHOLDER);
         assert_eq!(w.account, 0);
@@ -785,12 +807,9 @@ mod tests {
     #[test]
     fn wallet_omitted_yields_no_resolved_wallet() {
         let toml = SettlementToml::default();
-        let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides::default(),
-            &toml,
-            None,
-        )
-        .unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         assert!(cfg.wallet.is_none());
     }
 
@@ -805,12 +824,9 @@ mod tests {
             }),
             ..Default::default()
         };
-        let cfg = SettlementConfig::resolve_checked(
-            &SettlementCliOverrides::default(),
-            &toml,
-            None,
-        )
-        .unwrap();
+        let cfg =
+            SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None)
+                .unwrap();
         let intent = cfg.intent_signer_belts().expect("intent key");
         let payment = cfg.payment_signer_belts().expect("payment key");
         assert_ne!(intent, payment);

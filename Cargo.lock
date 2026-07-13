@@ -7920,6 +7920,7 @@ dependencies = [
  "vesl-signing",
  "vesl-wallet",
  "vesl-wallet-spec",
+ "wallet-tx-builder",
  "zeroize",
 ]
 
@@ -7930,6 +7931,8 @@ dependencies = [
  "bs58",
  "ibig",
  "once_cell",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -7984,6 +7987,20 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "wallet-tx-builder"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "nockapp",
+ "nockchain-math",
+ "nockchain-types",
+ "nockvm",
+ "noun-serde",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

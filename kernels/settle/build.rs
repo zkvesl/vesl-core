@@ -1,6 +1,5 @@
-use std::env;
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 use sha2::{Digest, Sha256};
 
@@ -13,18 +12,19 @@ fn main() {
     println!("cargo:rerun-if-changed={}", jam_path.display());
 
     if env::var_os("KERNEL_JAM_PATH").is_none() {
-        println!(
-            "cargo:rustc-env=KERNEL_JAM_PATH={}",
-            jam_path.display()
-        );
+        println!("cargo:rustc-env=KERNEL_JAM_PATH={}", jam_path.display());
     }
 
     // AUDIT 2026-04-17 M-07: embed kernel sha256 at build time.
     let effective_jam_path = env::var("KERNEL_JAM_PATH")
         .map(PathBuf::from)
         .unwrap_or(jam_path);
-    let jam_bytes = fs::read(&effective_jam_path)
-        .unwrap_or_else(|e| panic!("kernels-settle build: read {}: {e}", effective_jam_path.display()));
+    let jam_bytes = fs::read(&effective_jam_path).unwrap_or_else(|e| {
+        panic!(
+            "kernels-settle build: read {}: {e}",
+            effective_jam_path.display()
+        )
+    });
     let digest = Sha256::digest(&jam_bytes);
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     println!("cargo:rustc-env=KERNEL_JAM_SHA256={hex}");

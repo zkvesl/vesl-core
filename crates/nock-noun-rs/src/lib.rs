@@ -282,11 +282,21 @@ mod tests {
         let stack = new_stack();
         let space = stack.noun_space();
         assert_eq!(
-            make_loobean(true).in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            make_loobean(true)
+                .in_space(&space)
+                .as_atom()
+                .unwrap()
+                .as_u64()
+                .unwrap(),
             0,
         );
         assert_eq!(
-            make_loobean(false).in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            make_loobean(false)
+                .in_space(&space)
+                .as_atom()
+                .unwrap()
+                .as_u64()
+                .unwrap(),
             1,
         );
     }
@@ -321,7 +331,10 @@ mod tests {
         let mut stack = new_stack();
         let noun = make_atom(&mut stack, &[]);
         let space = stack.noun_space();
-        assert_eq!(noun.in_space(&space).as_atom().unwrap().as_u64().unwrap(), 0);
+        assert_eq!(
+            noun.in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -350,7 +363,10 @@ mod tests {
         let mut stack = new_stack();
         let list = make_list(&mut stack, &[]);
         let space = stack.noun_space();
-        assert_eq!(list.in_space(&space).as_atom().unwrap().as_u64().unwrap(), 0);
+        assert_eq!(
+            list.in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -386,7 +402,10 @@ mod tests {
         let mut s2 = new_stack();
         let cued = cue_from_bytes(&mut s2, &rejammed).expect("rejam output cues");
         let space = s2.noun_space();
-        assert_eq!(cued.in_space(&space).as_atom().unwrap().as_u64().unwrap(), 42);
+        assert_eq!(
+            cued.in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            42
+        );
     }
 
     #[test]

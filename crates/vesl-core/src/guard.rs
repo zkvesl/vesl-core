@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use nockchain_tip5_rs::{verify_proof, ProofNode, Tip5Hash};
+use nockchain_tip5_rs::{ProofNode, Tip5Hash, verify_proof};
 
 /// Maximum number of registered roots to prevent unbounded memory growth.
 const MAX_ROOTS: usize = 10_000;
@@ -64,12 +64,7 @@ impl Guard {
     }
 
     /// Verify a chunk against a registered root. Pure math, no kernel.
-    pub fn check(
-        &self,
-        data: &[u8],
-        proof: &[ProofNode],
-        root: &Tip5Hash,
-    ) -> bool {
+    pub fn check(&self, data: &[u8], proof: &[ProofNode], root: &Tip5Hash) -> bool {
         self.is_registered(root) && verify_proof(data, proof, root)
     }
 
@@ -115,8 +110,7 @@ mod tests {
     fn build_test_scenario() -> (Mint, Tip5Hash, Vec<&'static [u8]>) {
         let mut mint = Mint::new();
         let chunks: Vec<&[u8]> = vec![
-            b"The fund returned 12% YTD.",
-            b"Risk exposure is within limits.",
+            b"The fund returned 12% YTD.", b"Risk exposure is within limits.",
             b"No regulatory flags detected.",
         ];
         let root = mint.commit(&chunks);
@@ -192,9 +186,10 @@ mod tests {
         let mut guard = Guard::new();
         guard.register_root(root).unwrap();
         let proof = mint.proof(0).unwrap();
-        assert!(guard
-            .check_with_reason(b"The fund returned 12% YTD.", &proof, &root)
-            .is_ok());
+        assert!(
+            guard
+                .check_with_reason(b"The fund returned 12% YTD.", &proof, &root)
+                .is_ok()
+        );
     }
-
 }

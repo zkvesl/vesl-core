@@ -25,16 +25,14 @@ use std::fmt;
 
 use ibig::UBig;
 use nockchain_math::belt::Belt;
-use nockchain_math::crypto::cheetah::{
-    CheetahPoint as NockCheetahPoint, F6lt as NockF6lt,
-};
+use nockchain_math::crypto::cheetah::{CheetahPoint as NockCheetahPoint, F6lt as NockF6lt};
 use nockchain_types::tx_engine::common::{Hash, SchnorrPubkey, SchnorrSignature};
 use vesl_signing::prelude::Belt as VeslBelt;
 use vesl_signing::schnorr::{
-    schnorr_sign, CheetahPoint as VeslCheetahPoint, F6lt as VeslF6lt, SchnorrError,
-    SchnorrPrivateKey,
+    CheetahPoint as VeslCheetahPoint, F6lt as VeslF6lt, SchnorrError, SchnorrPrivateKey,
+    SchnorrSignatureJson, schnorr_sign, schnorr_verify,
 };
-use vesl_wallet::{VeslWallet, WalletError, VESL_COIN_TYPE_PLACEHOLDER};
+use vesl_wallet::{VESL_COIN_TYPE_PLACEHOLDER, VeslWallet, WalletError};
 use zeroize::Zeroize;
 
 // ---------------------------------------------------------------------------
@@ -111,9 +109,9 @@ impl From<WalletError> for SigningError {
             WalletError::IndexOverflow(i) => {
                 Self::DerivationFailure(format!("hardened index {i} exceeds 31-bit limit"))
             }
-            WalletError::ScalarTooWide => Self::DerivationFailure(
-                "HD scalar exceeded the 32-byte transcript width".into(),
-            ),
+            WalletError::ScalarTooWide => {
+                Self::DerivationFailure("HD scalar exceeded the 32-byte transcript width".into())
+            }
             WalletError::Signing(inner) => Self::from(inner),
         }
     }
@@ -261,6 +259,50 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, Sig
     })
 }
 
+pub fn pubkey_from_base58(b58: &str) -> Result<SchnorrPubkey, SigningError> {
+    let point = VeslCheetahPoint::from_base58(b58)
+        .map_err(|e| SigningError::HashFailed(format!("pubkey base58 decode: {e}")))?;
+    Ok(SchnorrPubkey(vesl_point_to_nock(&point)))
+}
+
+pub fn wire_signature_to_chain(
+    json: &SchnorrSignatureJson,
+) -> Result<(SchnorrPubkey, SchnorrSignature), SigningError> {
+    let pubkey = pubkey_from_base58(&json.pubkey)?;
+    let parse8 = |limbs: &[String; 8]| -> Result<[Belt; 8], SigningError> {
+        let mut out = [Belt(0); 8];
+        for (i, s) in limbs.iter().enumerate() {
+            let v: u64 = s.parse().map_err(|_| SigningError::InvalidSecretKey)?;
+            if v > u32::MAX as u64 {
+                return Err(SigningError::InvalidSecretKey);
+            }
+            out[i] = Belt(v);
+        }
+        Ok(out)
+    };
+    let signature = SchnorrSignature {
+        chal: parse8(&json.schnorr.chal)?,
+        sig: parse8(&json.schnorr.sig)?,
+    };
+    Ok((pubkey, signature))
+}
+
+/// Verify a chain-form Schnorr signature over a 5-limb message — the
+/// per-entry predicate of the tx engine's `check:pkh` (minus the batch
+/// step): the message is the spend's sig-hash, signed raw, with no
+/// domain rebind.
+pub fn verify_chain_signature(
+    pk: &SchnorrPubkey,
+    message: &[Belt; 5],
+    sig: &SchnorrSignature,
+) -> bool {
+    let point = nock_point_to_vesl(&pk.0);
+    let m = nock_belts5_to_vesl(message);
+    let chal = belts8_to_ubig(&sig.chal);
+    let s = belts8_to_ubig(&sig.sig);
+    schnorr_verify(&point, &m, &chal, &s).is_ok()
+}
+
 // ---------------------------------------------------------------------------
 // Key derivation — BIP-39 + BIP-44 via vesl-wallet (replaces the prior
 // ad-hoc Tip5 hash). Existing seeds will produce different keys; callers
@@ -378,15 +420,15 @@ pub(crate) fn ubig_to_belts8(val: &UBig) -> [Belt; 8] {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nockchain_math::crypto::cheetah::{
-        ch_add, ch_neg, ch_scal_big, trunc_g_order, A_GEN, F6_ZERO,
+        A_GEN, F6_ZERO, ch_add, ch_neg, ch_scal_big, trunc_g_order,
     };
     use nockchain_math::tip5::hash::hash_varlen;
 
+    use super::*;
+
     /// Canonical BIP-39 12-word test vector ("abandon×11 + about").
-    const CANONICAL_MNEMONIC: &str =
-        "abandon abandon abandon abandon abandon abandon abandon abandon \
+    const CANONICAL_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon \
          abandon abandon abandon about";
 
     /// A second canonical BIP-39 vector for distinct-input tests.
@@ -496,8 +538,8 @@ mod tests {
 
     #[test]
     fn key_from_seed_phrase_rejects_invalid_mnemonic() {
-        let err = key_from_seed_phrase("not a real mnemonic")
-            .expect_err("invalid mnemonic must fail");
+        let err =
+            key_from_seed_phrase("not a real mnemonic").expect_err("invalid mnemonic must fail");
         assert!(matches!(err, SigningError::InvalidMnemonic(_)));
     }
 
@@ -577,9 +619,7 @@ mod tests {
         sk[0] = Belt(11_111);
         sk[1] = Belt(22_222);
         let pubkey = derive_pubkey(&sk).expect("test key derives");
-        let digest = schnorr_message_digest_for_data(
-            b"attest: 32-byte hash fingerprint",
-        );
+        let digest = schnorr_message_digest_for_data(b"attest: 32-byte hash fingerprint");
         let sig = sign(&sk, &digest).expect("signing should succeed");
 
         let chal_big = belts8_to_ubig(&sig.chal);
@@ -596,6 +636,47 @@ mod tests {
         hashable.extend_from_slice(&digest);
         let recomputed = trunc_g_order(&hash_varlen(&mut hashable));
         assert_eq!(recomputed, chal_big);
+    }
+
+    #[test]
+    fn wire_round_trip_verifies_as_a_chain_signature() {
+        let mut sk = [Belt(0); 8];
+        sk[0] = Belt(8_086);
+        let message = [Belt(3), Belt(1), Belt(4), Belt(1), Belt(5)];
+        let chain_sig = sign(&sk, &message).expect("sign");
+        let pk = derive_pubkey(&sk).expect("derive");
+
+        // Encode to the wire form by hand: the b58 point + the chain
+        // limbs as decimal strings (the layouts coincide by design).
+        let b58 = nock_point_to_vesl(&pk.0).into_base58().expect("b58");
+        let to_strings =
+            |belts: &[Belt; 8]| -> [String; 8] { std::array::from_fn(|i| belts[i].0.to_string()) };
+        let json = SchnorrSignatureJson {
+            pubkey: b58,
+            schnorr: vesl_signing::schnorr::SchnorrPair {
+                chal: to_strings(&chain_sig.chal),
+                sig: to_strings(&chain_sig.sig),
+            },
+        };
+
+        let (pk_back, sig_back) = wire_signature_to_chain(&json).expect("wire decode");
+        assert_eq!(pk_back.0.x.0, pk.0.x.0);
+        assert_eq!(sig_back, chain_sig);
+        assert!(verify_chain_signature(&pk_back, &message, &sig_back));
+        let wrong = [Belt(0); 5];
+        assert!(!verify_chain_signature(&pk_back, &wrong, &sig_back));
+    }
+
+    #[test]
+    fn wire_signature_rejects_oversized_limbs() {
+        let json = SchnorrSignatureJson {
+            pubkey: "x".into(),
+            schnorr: vesl_signing::schnorr::SchnorrPair {
+                chal: std::array::from_fn(|_| u64::MAX.to_string()),
+                sig: std::array::from_fn(|_| "0".to_string()),
+            },
+        };
+        assert!(wire_signature_to_chain(&json).is_err());
     }
 
     #[test]

@@ -19,7 +19,7 @@ nockchain-client-rs = { path = "../nockchain-client-rs" }
 # `derive_pubkey`/`sign`/`key_from_seed_phrase`) is preserved.
 # Path dep during local development; switch to git-dep with v0.1.0
 # once the vesl-wallet repo cuts v0.1.0.
-vesl-signing = { path = "../../../vesl-wallet/crates/vesl-signing", default-features = false }
+vesl-signing = { path = "../../../vesl-wallet/crates/vesl-signing", default-features = false, features = ["json"] }
 
 # Vesl wallet derivation spec — doc-only crate exposing role constants
 # + `DerivationPath`. No derivation logic — that lives in `vesl-wallet`.
@@ -52,6 +52,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = "1"
 clap = { version = "4", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# Upstream wallet planner — fee-formula cross-check only. Its word
+# counting prices `hax` at one word and cannot cost a proof-carrying
+# witness, so the fee module counts nouns itself.
+wallet-tx-builder = { path = "../../../nockchain/crates/wallet-tx-builder" }
 
 [features]
 default = []

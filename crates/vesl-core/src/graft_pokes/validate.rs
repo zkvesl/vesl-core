@@ -13,7 +13,7 @@
 //! See `protocol/lib/validate-graft.hoon` for the runtime semantics
 //! and the cause-level vs field-level scope rationale.
 
-use nock_noun_rs::{make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, make_tag_in};
 use nockvm::noun::{D, T};
 
 /// Build a `[%validate-init cause-tag=@ta rules=(list rule)]` poke.
@@ -74,8 +74,9 @@ fn build_rules_list(slab: &mut NounSlab, rules: &[Rule]) -> nockvm::noun::Noun {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_validate_init_poke_emits_nonempty_jam() {

@@ -9,7 +9,7 @@
 //! Pair with the `%forge-prove` arm installed by `graft-inject`.
 //! Hull and note-id route through `atom_from_u64`.
 
-use nock_noun_rs::{atom_from_u64, make_atom_in, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_atom_in, make_tag_in};
 use nockvm::noun::T;
 
 /// Build a `[%forge-prove hull=@ note-id=@ data=@]` poke.
@@ -31,8 +31,9 @@ pub fn build_forge_prove_poke(hull: u64, note_id: u64, data: &[u8]) -> NounSlab 
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_forge_prove_poke_emits_nonempty_jam() {

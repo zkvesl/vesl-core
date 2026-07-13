@@ -5,7 +5,7 @@
 //! `u64`. Pair with the `%counter-increment` / `%counter-reset` /
 //! `%counter-set` arms installed by `graft-inject`.
 
-use nock_noun_rs::{atom_from_u64, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_tag_in};
 use nockvm::noun::T;
 
 /// Build a `[%counter-increment name=@t]` poke.
@@ -41,8 +41,9 @@ pub fn build_counter_set_poke(name: &str, value: u64) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_counter_increment_poke_emits_nonempty_jam() {

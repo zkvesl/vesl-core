@@ -15,8 +15,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use tempfile::TempDir;
-
-use vesl_checkpoint::{resume_with_data_dir, snapshot, Snapshot};
+use vesl_checkpoint::{Snapshot, resume_with_data_dir, snapshot};
 
 fn fixture_kernel() -> PathBuf {
     // CARGO_MANIFEST_DIR = vesl-core/crates/vesl-checkpoint

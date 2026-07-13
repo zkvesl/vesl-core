@@ -11,7 +11,7 @@
 //! specific shape validation belongs in a Phase 03 validate-graft,
 //! not here.
 
-use nock_noun_rs::{slab_jam_to_bytes, make_atom_in, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, make_atom_in, make_tag_in, slab_jam_to_bytes};
 use nockvm::noun::T;
 
 /// Build a `[%queue-push payload=@]` poke.
@@ -61,8 +61,9 @@ pub fn build_queue_clear_poke() -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::new_stack;
+
     use super::*;
-    use nock_noun_rs::{new_stack};
 
     #[test]
     fn build_queue_push_poke_emits_nonempty_jam() {

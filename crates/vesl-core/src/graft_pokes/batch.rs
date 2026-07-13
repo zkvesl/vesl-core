@@ -13,9 +13,7 @@
 //! re-cues inside its poke arm, wrapped in mule — the canonical
 //! pattern from queue-graft / log-graft.
 
-use nock_noun_rs::{
-    atom_from_u64, slab_jam_to_bytes, make_atom_in, make_tag_in, NounSlab,
-};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_atom_in, make_tag_in, slab_jam_to_bytes};
 use nockvm::noun::{D, T};
 
 /// Build a `[%batch-init threshold=@ud]` poke.
@@ -71,8 +69,9 @@ pub fn build_batch_flush_poke() -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::new_stack;
+
     use super::*;
-    use nock_noun_rs::{new_stack};
 
     #[test]
     fn build_batch_init_poke_emits_nonempty_jam() {

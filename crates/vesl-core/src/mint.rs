@@ -19,7 +19,10 @@ impl std::fmt::Display for MintError {
         match self {
             Self::NoTree => write!(f, "no tree committed — call commit() first"),
             Self::IndexOutOfRange { index, leaf_count } => {
-                write!(f, "leaf index {index} out of range (tree has {leaf_count} leaves)")
+                write!(
+                    f,
+                    "leaf index {index} out of range (tree has {leaf_count} leaves)"
+                )
             }
         }
     }
@@ -35,7 +38,10 @@ pub struct Mint {
 impl Mint {
     /// Create a new Mint committer.
     pub fn new() -> Self {
-        Mint { tree: None, leaf_count: 0 }
+        Mint {
+            tree: None,
+            leaf_count: 0,
+        }
     }
 
     /// Commit a set of data chunks. Returns the Merkle root.
@@ -47,8 +53,7 @@ impl Mint {
     /// [`nockchain_tip5_rs::MerkleTree::build`] directly, which returns a
     /// typed [`nockchain_tip5_rs::MerkleTreeError`].
     pub fn commit(&mut self, data: &[&[u8]]) -> Tip5Hash {
-        let tree = MerkleTree::build(data)
-            .expect("Mint::commit requires a non-empty data set");
+        let tree = MerkleTree::build(data).expect("Mint::commit requires a non-empty data set");
         let root = tree.root();
         self.leaf_count = data.len();
         self.tree = Some(tree);
@@ -86,8 +91,9 @@ impl Default for Mint {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nockchain_tip5_rs::verify_proof;
+
+    use super::*;
 
     #[test]
     fn commit_and_prove_single_leaf() {
@@ -105,12 +111,7 @@ mod tests {
     #[test]
     fn commit_and_prove_multiple_leaves() {
         let mut mint = Mint::new();
-        let chunks: Vec<&[u8]> = vec![
-            b"alpha",
-            b"bravo",
-            b"charlie",
-            b"delta",
-        ];
+        let chunks: Vec<&[u8]> = vec![b"alpha", b"bravo", b"charlie", b"delta"];
         let root = mint.commit(&chunks);
 
         for (i, chunk) in chunks.iter().enumerate() {

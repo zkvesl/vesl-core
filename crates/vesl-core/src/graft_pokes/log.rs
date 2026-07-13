@@ -12,7 +12,7 @@
 //!
 //! Pair with the `%log-append` arm installed by `graft-inject`.
 
-use nock_noun_rs::{slab_jam_to_bytes, make_atom_in, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, make_atom_in, make_tag_in, slab_jam_to_bytes};
 use nockvm::noun::T;
 
 /// Build a `[%log-append tag=@ta payload=@]` poke.
@@ -48,8 +48,9 @@ pub fn build_log_append_poke_from_noun(tag: &str, payload: &NounSlab) -> NounSla
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::new_stack;
+
     use super::*;
-    use nock_noun_rs::{new_stack};
 
     #[test]
     fn build_log_append_poke_emits_nonempty_jam() {

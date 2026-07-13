@@ -11,17 +11,16 @@
 //! TOML role section, different key.
 
 use nockchain_math::belt::Belt;
+use vesl_core::SigningError;
 use vesl_core::config::{
     SettlementCliOverrides, SettlementConfig, SettlementMode, SettlementToml, WalletRoleToml,
     WalletToml,
 };
-use vesl_core::SigningError;
 use vesl_signing::prelude::Belt as VeslBelt;
-use vesl_signing::schnorr::{schnorr_sign, schnorr_verify, SchnorrPrivateKey};
+use vesl_signing::schnorr::{SchnorrPrivateKey, schnorr_sign, schnorr_verify};
 
 /// Canonical BIP-39 12-word test vector ("abandon×11 + about").
-const CANONICAL_MNEMONIC: &str =
-    "abandon abandon abandon abandon abandon abandon abandon abandon \
+const CANONICAL_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon \
      abandon abandon abandon about";
 
 fn settlement_toml_with_wallet() -> SettlementToml {
@@ -31,8 +30,14 @@ fn settlement_toml_with_wallet() -> SettlementToml {
             seed_phrase: Some(CANONICAL_MNEMONIC.into()),
             // Defaults applied for everything else: VESL_COIN_TYPE_PLACEHOLDER,
             // account = 0, intent.role = ROLE_INTENT, payment.role = ROLE_X402.
-            intent: Some(WalletRoleToml { role: None, index: Some(7) }),
-            payment: Some(WalletRoleToml { role: None, index: Some(13) }),
+            intent: Some(WalletRoleToml {
+                role: None,
+                index: Some(7),
+            }),
+            payment: Some(WalletRoleToml {
+                role: None,
+                index: Some(13),
+            }),
             ..Default::default()
         }),
         ..Default::default()
@@ -92,36 +97,46 @@ fn same_code_signs_under_intent_and_payment_keys_via_toml_toggle() {
     let intent_key = key_from_belts(&cfg.intent_signer_belts().expect("intent key present"));
     let payment_key = key_from_belts(&cfg.payment_signer_belts().expect("payment key present"));
 
-    let intent_msg = [
-        VeslBelt(11),
-        VeslBelt(22),
-        VeslBelt(33),
-        VeslBelt(44),
-        VeslBelt(55),
-    ];
-    let payment_msg = [
-        VeslBelt(99),
-        VeslBelt(98),
-        VeslBelt(97),
-        VeslBelt(96),
-        VeslBelt(95),
-    ];
+    let intent_msg = [VeslBelt(11), VeslBelt(22), VeslBelt(33), VeslBelt(44), VeslBelt(55)];
+    let payment_msg = [VeslBelt(99), VeslBelt(98), VeslBelt(97), VeslBelt(96), VeslBelt(95)];
 
     let (i_chal, i_sig) = schnorr_sign(&intent_key, &intent_msg).unwrap();
     let (p_chal, p_sig) = schnorr_sign(&payment_key, &payment_msg).unwrap();
 
-    schnorr_verify(&intent_key.public_key().unwrap(), &intent_msg, &i_chal, &i_sig)
-        .expect("intent signature verifies under its own pubkey");
-    schnorr_verify(&payment_key.public_key().unwrap(), &payment_msg, &p_chal, &p_sig)
-        .expect("payment signature verifies under its own pubkey");
+    schnorr_verify(
+        &intent_key.public_key().unwrap(),
+        &intent_msg,
+        &i_chal,
+        &i_sig,
+    )
+    .expect("intent signature verifies under its own pubkey");
+    schnorr_verify(
+        &payment_key.public_key().unwrap(),
+        &payment_msg,
+        &p_chal,
+        &p_sig,
+    )
+    .expect("payment signature verifies under its own pubkey");
 
     // Cross-verify: each pubkey rejects the other's signature.
     assert!(
-        schnorr_verify(&intent_key.public_key().unwrap(), &payment_msg, &p_chal, &p_sig).is_err(),
+        schnorr_verify(
+            &intent_key.public_key().unwrap(),
+            &payment_msg,
+            &p_chal,
+            &p_sig
+        )
+        .is_err(),
         "intent pubkey must NOT verify a payment-key signature"
     );
     assert!(
-        schnorr_verify(&payment_key.public_key().unwrap(), &intent_msg, &i_chal, &i_sig).is_err(),
+        schnorr_verify(
+            &payment_key.public_key().unwrap(),
+            &intent_msg,
+            &i_chal,
+            &i_sig
+        )
+        .is_err(),
         "payment pubkey must NOT verify an intent-key signature"
     );
 }
@@ -205,12 +220,8 @@ fn cli_account_override_propagates_to_derived_key() {
 #[test]
 fn missing_wallet_block_yields_no_signing_keys() {
     let toml = SettlementToml::default();
-    let cfg = SettlementConfig::resolve_checked(
-        &SettlementCliOverrides::default(),
-        &toml,
-        None,
-    )
-    .unwrap();
+    let cfg =
+        SettlementConfig::resolve_checked(&SettlementCliOverrides::default(), &toml, None).unwrap();
     assert!(cfg.wallet.is_none());
     assert!(matches!(
         cfg.intent_signer_belts(),

@@ -10,16 +10,16 @@
 //! (vesl-nockup/.dev/00_PARAMETIZATION.md, §"Rust helper surface")
 //! for the full convention.
 
-pub mod settle;
-pub mod mint;
-pub mod guard;
-pub mod forge;
-pub mod kv;
+pub mod batch;
+pub mod clock;
 pub mod counter;
+pub mod forge;
+pub mod guard;
+pub mod kv;
+pub mod log;
+pub mod mint;
 pub mod queue;
 pub mod rbac;
 pub mod registry;
-pub mod clock;
-pub mod log;
+pub mod settle;
 pub mod validate;
-pub mod batch;

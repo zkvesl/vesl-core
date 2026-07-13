@@ -8,7 +8,7 @@
 //! interpretation is the caller's responsibility. Callers wanting strict
 //! semantics or structured records use `registry-graft` instead.
 
-use nock_noun_rs::{make_atom_in, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, make_atom_in, make_tag_in};
 use nockvm::noun::T;
 
 /// Build a `[%kv-set key=@t value=@]` poke.
@@ -34,8 +34,9 @@ pub fn build_kv_delete_poke(key: &str) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     #[test]
     fn build_kv_set_poke_emits_nonempty_jam() {

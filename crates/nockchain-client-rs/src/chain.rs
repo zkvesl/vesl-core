@@ -88,26 +88,27 @@ impl ChainClient {
     /// Connect to a Nockchain node's public gRPC endpoint.
     pub async fn connect(config: ChainConfig) -> Result<Self> {
         crate::reject_insecure_endpoint(&config.endpoint)?;
-        let client =
-            nockapp_grpc::services::public_nockchain::PublicNockchainGrpcClient::connect(
-                &config.endpoint,
+        let client = nockapp_grpc::services::public_nockchain::PublicNockchainGrpcClient::connect(
+            &config.endpoint,
+        )
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "failed to connect to Nockchain gRPC at {}: {e:?}", config.endpoint
             )
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "failed to connect to Nockchain gRPC at {}: {e:?}",
-                    config.endpoint
-                )
-            })?;
+        })?;
         let block = NockchainBlockServiceClient::connect(config.endpoint.clone())
             .await
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "failed to connect block-service client to {}: {e:?}",
-                    config.endpoint
+                    "failed to connect block-service client to {}: {e:?}", config.endpoint
                 )
             })?;
-        Ok(Self { client, block, config })
+        Ok(Self {
+            client,
+            block,
+            config,
+        })
     }
 
     /// Submit a pre-signed raw transaction to the Nockchain node.
@@ -199,7 +200,7 @@ impl ChainClient {
     ) -> Result<TransactionBlockResult> {
         use nockapp_grpc::pb::common::v1::Base58Hash;
         use nockapp_grpc::pb::public::v2::{
-            get_transaction_block_response, GetTransactionBlockRequest,
+            GetTransactionBlockRequest, get_transaction_block_response,
         };
 
         let req = GetTransactionBlockRequest {
@@ -240,8 +241,7 @@ impl ChainClient {
                 Ok(TransactionBlockResult::Pending)
             }
             Some(get_transaction_block_response::Result::Error(err)) => Err(anyhow::anyhow!(
-                "get_transaction_block returned error: {}",
-                err.message
+                "get_transaction_block returned error: {}", err.message
             )),
             None => Err(anyhow::anyhow!(
                 "get_transaction_block returned an empty response"
@@ -258,8 +258,8 @@ impl ChainClient {
     ) -> Result<TransactionDetailsResult> {
         use nockapp_grpc::pb::common::v1::Base58Hash;
         use nockapp_grpc::pb::public::v2::{
-            get_transaction_details_response, transaction_details, transaction_output,
-            GetTransactionDetailsRequest,
+            GetTransactionDetailsRequest, get_transaction_details_response, transaction_details,
+            transaction_output,
         };
 
         let req = GetTransactionDetailsRequest {
@@ -290,8 +290,7 @@ impl ChainClient {
             }
             Some(get_transaction_details_response::Result::Error(err)) => {
                 return Err(anyhow::anyhow!(
-                    "get_transaction_details returned error: {}",
-                    err.message
+                    "get_transaction_details returned error: {}", err.message
                 ));
             }
             None => {
@@ -505,20 +504,25 @@ fn pb_hash_to_base58(
 ) -> Result<String> {
     let h = hash.ok_or_else(|| anyhow::anyhow!("{field} hash field was unset"))?;
     let belts = [
-        h.belt_1.ok_or_else(|| anyhow::anyhow!("{field}.belt_1 unset"))?.value,
-        h.belt_2.ok_or_else(|| anyhow::anyhow!("{field}.belt_2 unset"))?.value,
-        h.belt_3.ok_or_else(|| anyhow::anyhow!("{field}.belt_3 unset"))?.value,
-        h.belt_4.ok_or_else(|| anyhow::anyhow!("{field}.belt_4 unset"))?.value,
-        h.belt_5.ok_or_else(|| anyhow::anyhow!("{field}.belt_5 unset"))?.value,
+        h.belt_1
+            .ok_or_else(|| anyhow::anyhow!("{field}.belt_1 unset"))?
+            .value,
+        h.belt_2
+            .ok_or_else(|| anyhow::anyhow!("{field}.belt_2 unset"))?
+            .value,
+        h.belt_3
+            .ok_or_else(|| anyhow::anyhow!("{field}.belt_3 unset"))?
+            .value,
+        h.belt_4
+            .ok_or_else(|| anyhow::anyhow!("{field}.belt_4 unset"))?
+            .value,
+        h.belt_5
+            .ok_or_else(|| anyhow::anyhow!("{field}.belt_5 unset"))?
+            .value,
     ];
     use nockchain_math::belt::Belt;
-    let chain_hash = ChainHash([
-        Belt(belts[0]),
-        Belt(belts[1]),
-        Belt(belts[2]),
-        Belt(belts[3]),
-        Belt(belts[4]),
-    ]);
+    let chain_hash =
+        ChainHash([Belt(belts[0]), Belt(belts[1]), Belt(belts[2]), Belt(belts[3]), Belt(belts[4])]);
     Ok(chain_hash.to_base58())
 }
 

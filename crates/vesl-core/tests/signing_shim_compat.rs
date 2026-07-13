@@ -12,7 +12,7 @@
 use ibig::UBig;
 use nockchain_math::belt::Belt;
 use nockchain_math::crypto::cheetah::G_ORDER;
-use vesl_core::signing::{derive_pubkey, key_from_seed_phrase, pubkey_hash, sign, SigningError};
+use vesl_core::signing::{SigningError, derive_pubkey, key_from_seed_phrase, pubkey_hash, sign};
 
 fn nonzero_key() -> [Belt; 8] {
     let mut sk = [Belt(0); 8];
@@ -74,16 +74,15 @@ fn pubkey_hash_distinguishes_keys() {
     let sk1 = nonzero_key();
     let mut sk2 = nonzero_key();
     sk2[2] = Belt(99);
-    let pkh1 = pubkey_hash(&derive_pubkey(&sk1).expect("test key derives"))
-        .expect("pubkey hash succeeds");
-    let pkh2 = pubkey_hash(&derive_pubkey(&sk2).expect("test key derives"))
-        .expect("pubkey hash succeeds");
+    let pkh1 =
+        pubkey_hash(&derive_pubkey(&sk1).expect("test key derives")).expect("pubkey hash succeeds");
+    let pkh2 =
+        pubkey_hash(&derive_pubkey(&sk2).expect("test key derives")).expect("pubkey hash succeeds");
     assert_ne!(pkh1.0, pkh2.0);
 }
 
 /// Canonical BIP-39 12-word test vector ("abandon×11 + about").
-const CANONICAL_MNEMONIC: &str =
-    "abandon abandon abandon abandon abandon abandon abandon abandon \
+const CANONICAL_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon \
      abandon abandon abandon about";
 
 /// Second canonical BIP-39 vector for distinct-input tests.

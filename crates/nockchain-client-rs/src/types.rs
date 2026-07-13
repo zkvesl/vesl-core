@@ -4,8 +4,8 @@
 //! Rust-friendly types. The main type is `SpendableUtxo` which carries the
 //! note name, amount, and raw NoteData for app-specific decoding.
 
-use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::Bytes;
+use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockchain_math::owned_based_noun::OwnedBasedNoun;
 use nockchain_tip5_rs::check_tip5_limbs;
 use nockchain_types::tx_engine::common::Hash as ChainHash;

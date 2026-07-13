@@ -10,8 +10,8 @@
 //! `graft-inject`. Hull IDs route through `atom_from_u64` so callers
 //! can pass hash-derived hulls above `DIRECT_MAX`.
 
-use nock_noun_rs::{atom_from_u64, make_atom_in, make_tag_in, NounSlab};
-use nockchain_tip5_rs::{tip5_to_atom_le_bytes, Tip5Hash};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_atom_in, make_tag_in};
+use nockchain_tip5_rs::{Tip5Hash, tip5_to_atom_le_bytes};
 use nockvm::noun::T;
 
 /// Build a `[%guard-register hull=@ root=@]` poke.
@@ -42,9 +42,10 @@ pub fn build_guard_check_poke(hull: u64, data: &[u8]) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::{new_stack, slab_jam_to_bytes};
+
     use super::*;
     use crate::Mint;
-    use nock_noun_rs::{slab_jam_to_bytes, new_stack};
 
     fn fixture_root() -> Tip5Hash {
         let data: [&[u8]; 1] = [b"hello world"];

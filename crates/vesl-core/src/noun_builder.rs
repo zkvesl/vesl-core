@@ -5,8 +5,8 @@
 //! (manifest, settlement payload, settle/prove pokes) stay in the domain hull.
 
 use nock_noun_rs::{
-    atom_from_u64, make_atom, make_atom_in, make_loobean,
-    Cell, D, NounSlab, NockStack, Noun, NounAllocator, T,
+    Cell, D, NockStack, Noun, NounAllocator, NounSlab, T, atom_from_u64, make_atom, make_atom_in,
+    make_loobean,
 };
 use nockchain_tip5_rs::tip5_to_atom_le_bytes;
 
@@ -93,19 +93,30 @@ pub fn build_register_poke(hull_id: u64, root: &Tip5Hash) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nock_noun_rs::{make_cord, new_stack};
+
+    use super::*;
 
     #[test]
     fn loobean_encoding() {
         let stack = new_stack();
         let space = stack.noun_space();
         assert_eq!(
-            make_loobean(true).in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            make_loobean(true)
+                .in_space(&space)
+                .as_atom()
+                .unwrap()
+                .as_u64()
+                .unwrap(),
             0,
         );
         assert_eq!(
-            make_loobean(false).in_space(&space).as_atom().unwrap().as_u64().unwrap(),
+            make_loobean(false)
+                .in_space(&space)
+                .as_atom()
+                .unwrap()
+                .as_u64()
+                .unwrap(),
             1,
         );
     }

@@ -42,18 +42,17 @@ pub mod wallet;
 
 // Re-export the main types at crate root for convenience.
 pub use chain::{
-    ChainClient, ChainConfig, TransactionBlockResult, TransactionDetails,
-    TransactionDetailsResult, TxInput, TxOutput,
+    ChainClient, ChainConfig, TransactionBlockResult, TransactionDetails, TransactionDetailsResult,
+    TxInput, TxOutput,
 };
-pub use note_data::{find_entry, find_hash_entry, find_u64_entry, tip5_entry, u64_entry};
-pub use types::{extract_note_data, extract_spendable_utxos, SpendableUtxo};
-pub use wallet::{WalletClient, WalletConfig};
-
 // Re-export nockchain types that callers will need.
 pub use nockchain_tip5_rs::Tip5Hash;
 pub use nockchain_types::tx_engine::common::Hash as ChainHash;
-pub use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
 pub use nockchain_types::tx_engine::v1::RawTx;
+pub use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
+pub use note_data::{find_entry, find_hash_entry, find_u64_entry, tip5_entry, u64_entry};
+pub use types::{SpendableUtxo, extract_note_data, extract_spendable_utxos};
+pub use wallet::{WalletClient, WalletConfig};
 
 // ---------------------------------------------------------------------------
 // Endpoint security (AUDIT 2026-05-19 H-11)

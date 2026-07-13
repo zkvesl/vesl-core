@@ -4,13 +4,13 @@
 //! for constructing settlement transactions. Domain-specific wrappers
 //! (e.g. SettlementTxParams, settlement_to_note_data) stay in the hull.
 
+use nockapp::NockApp;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
-use nockapp::NockApp;
 use nockchain_types::tx_engine::common::{Hash, Nicks};
 use nockchain_types::tx_engine::v1::tx::{Seeds, Spends};
 use nockvm::ext::make_tas;
-use nockvm::noun::{IndirectAtom, NounAllocator, D, T};
+use nockvm::noun::{D, IndirectAtom, NounAllocator, T};
 use noun_serde::{NounDecode, NounEncode};
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,13 @@ use noun_serde::{NounDecode, NounEncode};
 /// the calling task forever. Matches vesl-hull's `poke_kernel_with_timeout`.
 const KERNEL_POKE_TIMEOUT_SECS: u64 = 30;
 
+/// Default poke timeout. `%tx-id` over a proof-carrying witness hashes
+/// a multi-megabyte noun; callers on that path should pass a wider
+/// bound to the `_with_timeout` variants instead.
+pub fn default_poke_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(KERNEL_POKE_TIMEOUT_SECS)
+}
+
 /// Compute sig-hash by poking the Hoon kernel's `%sig-hash` handler.
 ///
 /// Sends `[%sig-hash seeds-jam fee]` where `seeds-jam` is the JAM'd noun
@@ -31,7 +38,17 @@ pub async fn kernel_sig_hash(
     seeds: &Seeds,
     fee: &Nicks,
 ) -> anyhow::Result<Hash> {
-    let seeds_jammed = jam_seeds_manual(seeds)?;
+    kernel_sig_hash_with_timeout(app, seeds, fee, default_poke_timeout()).await
+}
+
+/// [`kernel_sig_hash`] with an explicit poke timeout.
+pub async fn kernel_sig_hash_with_timeout(
+    app: &mut NockApp,
+    seeds: &Seeds,
+    fee: &Nicks,
+    timeout: std::time::Duration,
+) -> anyhow::Result<Hash> {
+    let seeds_jammed = jam_seeds(seeds)?;
 
     let mut poke_slab: NounSlab = NounSlab::new();
     let tag = make_tas(&mut poke_slab, "sig-hash").as_noun();
@@ -43,13 +60,10 @@ pub async fn kernel_sig_hash(
     let cmd = T(&mut poke_slab, &[tag, seeds_atom, fee_noun]);
     poke_slab.set_root(cmd);
 
-    let effects = tokio::time::timeout(
-        std::time::Duration::from_secs(KERNEL_POKE_TIMEOUT_SECS),
-        app.poke(SystemWire.to_wire(), poke_slab),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("sig-hash poke timed out after {KERNEL_POKE_TIMEOUT_SECS}s"))?
-    .map_err(|e| anyhow::anyhow!("sig-hash poke failed: {e:?}"))?;
+    let effects = tokio::time::timeout(timeout, app.poke(SystemWire.to_wire(), poke_slab))
+        .await
+        .map_err(|_| anyhow::anyhow!("sig-hash poke timed out after {}s", timeout.as_secs()))?
+        .map_err(|e| anyhow::anyhow!("sig-hash poke failed: {e:?}"))?;
 
     extract_hash_from_effect(&effects, "sig-hash")
 }
@@ -58,9 +72,15 @@ pub async fn kernel_sig_hash(
 ///
 /// Sends `[%tx-id spends-jam]` where `spends-jam` is the JAM'd noun
 /// of the Spends z-map (including witness with real signatures).
-pub async fn kernel_tx_id(
+pub async fn kernel_tx_id(app: &mut NockApp, spends: &Spends) -> anyhow::Result<Hash> {
+    kernel_tx_id_with_timeout(app, spends, default_poke_timeout()).await
+}
+
+/// [`kernel_tx_id`] with an explicit poke timeout.
+pub async fn kernel_tx_id_with_timeout(
     app: &mut NockApp,
     spends: &Spends,
+    timeout: std::time::Duration,
 ) -> anyhow::Result<Hash> {
     let spends_jammed = jam_spends_manual(spends)?;
 
@@ -70,13 +90,10 @@ pub async fn kernel_tx_id(
     let cmd = T(&mut poke_slab, &[tag, spends_atom]);
     poke_slab.set_root(cmd);
 
-    let effects = tokio::time::timeout(
-        std::time::Duration::from_secs(KERNEL_POKE_TIMEOUT_SECS),
-        app.poke(SystemWire.to_wire(), poke_slab),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("tx-id poke timed out after {KERNEL_POKE_TIMEOUT_SECS}s"))?
-    .map_err(|e| anyhow::anyhow!("tx-id poke failed: {e:?}"))?;
+    let effects = tokio::time::timeout(timeout, app.poke(SystemWire.to_wire(), poke_slab))
+        .await
+        .map_err(|_| anyhow::anyhow!("tx-id poke timed out after {}s", timeout.as_secs()))?
+        .map_err(|e| anyhow::anyhow!("tx-id poke failed: {e:?}"))?;
 
     extract_hash_from_effect(&effects, "tx-id")
 }
@@ -84,6 +101,47 @@ pub async fn kernel_tx_id(
 // ---------------------------------------------------------------------------
 // Manual noun builders — work around NockStack issue in ZSet/z-map
 // ---------------------------------------------------------------------------
+
+/// JAM Seeds by encoder dispatch.
+///
+/// - Every seed carries empty note-data → the canonical `Seeds::to_noun`
+///   encoder, which orders the z-set treap and so handles any seed count.
+/// - A single seed (with or without note-data) → [`jam_seeds_manual`],
+///   whose trivial treap shape is byte-identical to the canonical
+///   encoder's for one element.
+/// - Multiple seeds where any carries note-data → unsupported: the
+///   canonical encoder's treap ordering runs each seed through a scratch
+///   `NockStack` that cannot absorb `NoteData::to_noun`.
+pub fn jam_seeds(seeds: &Seeds) -> anyhow::Result<bytes::Bytes> {
+    if seeds.0.iter().all(|seed| seed.note_data.is_empty()) {
+        jam_seeds_canonical(seeds)
+    } else if seeds.0.len() == 1 {
+        jam_seeds_manual(seeds)
+    } else {
+        anyhow::bail!(
+            "multi-seed with note-data is unsupported: the canonical z-set \
+             encoder cannot order seeds carrying note-data (have {})",
+            seeds.0.len()
+        )
+    }
+}
+
+/// JAM Seeds via the canonical `Seeds::to_noun` encoder.
+///
+/// Valid for any seed count when every seed's note-data is empty; the
+/// z-set treap ordering rejects note-data-bearing seeds (see
+/// [`jam_seeds`]).
+pub fn jam_seeds_canonical(seeds: &Seeds) -> anyhow::Result<bytes::Bytes> {
+    anyhow::ensure!(!seeds.0.is_empty(), "seeds must not be empty");
+    anyhow::ensure!(
+        seeds.0.iter().all(|seed| seed.note_data.is_empty()),
+        "canonical seeds JAM requires empty note-data on every seed"
+    );
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    let noun = seeds.to_noun(&mut slab);
+    slab.set_root(noun);
+    Ok(slab.jam())
+}
 
 /// JAM Seeds into a noun on a plain NounSlab, bypassing ZSet::try_from_items
 /// which creates an internal NockStack that fails with NoteData::to_noun().
@@ -189,9 +247,10 @@ pub fn bytes_to_atom(slab: &mut NounSlab, bytes: &[u8]) -> nockvm::noun::Noun {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
     use nockchain_types::tx_engine::v1::tx::Seed;
+
+    use super::*;
 
     /// Verify `jam_seeds_manual` output matches `Seeds::to_noun` -> JAM.
     #[test]

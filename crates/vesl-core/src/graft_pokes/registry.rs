@@ -6,7 +6,7 @@
 //! the poke arm under a mule guard — pre-jam your record on the
 //! Rust side.
 
-use nock_noun_rs::{atom_from_u64, slab_jam_to_bytes, make_atom_in, make_tag_in, NounSlab};
+use nock_noun_rs::{NounSlab, atom_from_u64, make_atom_in, make_tag_in, slab_jam_to_bytes};
 use nockvm::noun::T;
 
 /// Build a `[%registry-put key=@ payload=@]` poke.
@@ -68,8 +68,9 @@ pub fn build_registry_del_poke(key: u64) -> NounSlab {
 
 #[cfg(test)]
 mod tests {
+    use nock_noun_rs::new_stack;
+
     use super::*;
-    use nock_noun_rs::{new_stack};
 
     #[test]
     fn build_registry_put_poke_emits_nonempty_jam() {

@@ -1,6 +1,5 @@
-use std::env;
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 use sha2::{Digest, Sha256};
 
@@ -20,8 +19,12 @@ fn main() {
     let effective_jam_path = env::var("KERNEL_JAM_PATH")
         .map(PathBuf::from)
         .unwrap_or(jam_path);
-    let jam_bytes = fs::read(&effective_jam_path)
-        .unwrap_or_else(|e| panic!("kernels-guard build: read {}: {e}", effective_jam_path.display()));
+    let jam_bytes = fs::read(&effective_jam_path).unwrap_or_else(|e| {
+        panic!(
+            "kernels-guard build: read {}: {e}",
+            effective_jam_path.display()
+        )
+    });
     let digest = Sha256::digest(&jam_bytes);
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     println!("cargo:rustc-env=KERNEL_JAM_SHA256={hex}");

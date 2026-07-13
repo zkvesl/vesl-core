@@ -36,9 +36,9 @@
 use anyhow::Result;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockchain_math::owned_based_noun::OwnedBasedNoun;
-use nockchain_tip5_rs::{check_tip5_limbs, Tip5Hash};
+use nockchain_tip5_rs::{Tip5Hash, check_tip5_limbs};
 use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry, NoteDataValue};
-use nockvm::noun::{IndirectAtom, Noun, NounAllocator, D};
+use nockvm::noun::{D, IndirectAtom, Noun, NounAllocator};
 
 // ---------------------------------------------------------------------------
 // Encoding — Rust values to NoteDataEntry
@@ -102,8 +102,7 @@ fn entry_noun<'a>(entry: &'a NoteDataEntry) -> Result<&'a OwnedBasedNoun> {
     match &entry.value {
         NoteDataValue::Noun(noun) => Ok(noun),
         _ => Err(anyhow::anyhow!(
-            "NoteData key '{}' holds a typed chain payload, not a generic noun",
-            entry.key
+            "NoteData key '{}' holds a typed chain payload, not a generic noun", entry.key
         )),
     }
 }
@@ -112,9 +111,7 @@ fn entry_noun<'a>(entry: &'a NoteDataEntry) -> Result<&'a OwnedBasedNoun> {
 pub fn find_u64_entry(data: &NoteData, key: &str) -> Result<u64> {
     match entry_noun(find_entry(data, key)?)? {
         OwnedBasedNoun::Atom(belt) => Ok(belt.0),
-        OwnedBasedNoun::Cell(..) => {
-            Err(anyhow::anyhow!("expected atom for key '{key}', got cell"))
-        }
+        OwnedBasedNoun::Cell(..) => Err(anyhow::anyhow!("expected atom for key '{key}', got cell")),
     }
 }
 
@@ -156,8 +153,9 @@ pub fn find_entry<'a>(data: &'a NoteData, key: &str) -> Result<&'a NoteDataEntry
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use nockchain_math::belt::PRIME;
+
+    use super::*;
 
     #[test]
     fn u64_roundtrip() {

@@ -26,9 +26,9 @@
 
 use anyhow::Result;
 use nockapp::noun::slab::{NockJammer, NounSlab};
-use noun_serde::NounEncode;
 use nockvm::ext::make_tas;
-use nockvm::noun::{Noun, D, T};
+use nockvm::noun::{D, Noun, T};
+use noun_serde::NounEncode;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -99,10 +99,7 @@ impl WalletClient {
             nockapp_grpc::private_nockapp::PrivateNockAppGrpcClient::connect(&config.endpoint)
                 .await
                 .map_err(|e| {
-                    anyhow::anyhow!(
-                        "failed to connect to wallet at {}: {e:?}",
-                        config.endpoint
-                    )
+                    anyhow::anyhow!("failed to connect to wallet at {}: {e:?}", config.endpoint)
                 })?;
         Ok(Self {
             client,
@@ -156,10 +153,7 @@ impl WalletClient {
     }
 
     /// Query wallet balance by note first-name (base58 hash).
-    pub async fn peek_balance_by_name(
-        &mut self,
-        first_name_b58: &str,
-    ) -> Result<WalletBalance> {
+    pub async fn peek_balance_by_name(&mut self, first_name_b58: &str) -> Result<WalletBalance> {
         let path = build_peek_path(&["balance-by-first-name", first_name_b58]);
         let pid = self.next_pid();
         let data = self
@@ -202,11 +196,7 @@ impl WalletClient {
         fee_nicks: u64,
     ) -> Result<bool> {
         let payload = build_create_tx_poke(
-            input_first,
-            input_last,
-            recipient_address,
-            amount_nicks,
-            fee_nicks,
+            input_first, input_last, recipient_address, amount_nicks, fee_nicks,
         );
         let wire = nockapp_grpc::wire_conversion::create_grpc_wire();
         let pid = self.next_pid();
@@ -317,15 +307,7 @@ pub fn build_create_tx_poke(
     let cmd = T(
         &mut slab,
         &[
-            tag,
-            names,
-            order,
-            fee,
-            allow_low_fee,
-            refund,
-            sign_keys,
-            include_data,
-            save_raw,
+            tag, names, order, fee, allow_low_fee, refund, sign_keys, include_data, save_raw,
             note_sel,
         ],
     );
