@@ -136,7 +136,7 @@ pub fn verify_merk_proof(leaf: &Hash, axis: u64, proof: &MerkleProof) -> bool {
         let Some(sib) = path.next() else {
             return false;
         };
-        if axis % 2 == 0 {
+        if axis.is_multiple_of(2) {
             acc = hash_pair(&acc, sib);
             axis /= 2;
         } else {
