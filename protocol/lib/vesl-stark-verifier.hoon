@@ -37,18 +37,12 @@
   ::  at the verifier boundary instead.
   ::
   ?>  ?=(%2 version.proof)
-  =/  nock-common=_nock-common-v0-v1
-    ?-  version.proof
-      %0  nock-common-v0-v1
-      %1  nock-common-v0-v1
-      %2  nock-common-v2
-    ==
-  =/  pre=preprocess-data
-    ?-  version.proof
-      %0  p.pre-0-1.prep.stark-config
-      %1  p.pre-0-1.prep.stark-config
-      %2  p.pre-2.prep.stark-config
-    ==
+  ::  the pin above narrows version.proof to %2, so a per-version
+  ::  ?- dispatch here has provably dead %0/%1 cases (mint-vain);
+  ::  select the v2 data directly.
+  ::
+  =/  nock-common=_nock-common-v0-v1  nock-common-v2
+  =/  pre=preprocess-data  p.pre-2.prep.stark-config
   ::
   =/  verify  ~(verify verify-door [nock-common pre])
   %-  ~(. verify test-mode)
@@ -67,18 +61,12 @@
   ::  AUDIT 2026-04-19 C-lead-4: pin version.proof = %2 (see +verify).
   ::
   ?>  ?=(%2 version.proof)
-  =/  nock-common=_nock-common-v0-v1
-    ?-  version.proof
-      %0  nock-common-v0-v1
-      %1  nock-common-v0-v1
-      %2  nock-common-v2
-    ==
-  =/  pre=preprocess-data
-    ?-  version.proof
-      %0  p.pre-0-1.prep.stark-config
-      %1  p.pre-0-1.prep.stark-config
-      %2  p.pre-2.prep.stark-config
-    ==
+  ::  the pin above narrows version.proof to %2, so a per-version
+  ::  ?- dispatch here has provably dead %0/%1 cases (mint-vain);
+  ::  select the v2 data directly.
+  ::
+  =/  nock-common=_nock-common-v0-v1  nock-common-v2
+  =/  pre=preprocess-data  p.pre-2.prep.stark-config
   =/  vsd  ~(verify-settlement verify-door [nock-common pre])
   %-  ~(. vsd test-mode)
   [proof override verifier-eny s f expected-root expected-hull]
@@ -586,9 +574,9 @@
     ^-  ?
     =/  args  [proof override verifier-eny test-mode s f]
     =/  result  (mule |.((verify-inner args)))
-    ?.  -.result
+    ?:  ?=(%| -.result)
       %.n
-    =/  vr=verify-result  +.result
+    =/  vr=verify-result  p.result
     =/  root-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-root)
     =/  hull-digest=noun-digest:tip5  (atom-to-digest:tip5 expected-hull)
     ?&  =(commitment.vr root-digest)
