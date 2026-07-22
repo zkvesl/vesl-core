@@ -1,0 +1,19 @@
+# cargo-audit policy.
+#
+# Ignored advisories are transitive via nockchain's libp2p stack
+# (hickory-proto <- hickory-resolver <- libp2p-dns <- libp2p <-
+# nockchain-libp2p-io), whose git-pinned rust-libp2p requires
+# hickory 0.25.0-alpha.x. Neither advisory is fixable from this repo:
+#
+#   RUSTSEC-2026-0118 — hickory-proto NSEC3 validation loop: no fixed
+#                        release exists at all.
+#   RUSTSEC-2026-0119 — hickory-proto O(n^2) name compression: fixed
+#                        only in >=0.26.1, a major bump rust-libp2p has
+#                        not taken yet.
+#
+# Both concern DNS resolution inside the p2p transport. Revisit on every
+# NOCK_PIN bump; drop the ignores once nockchain's libp2p moves to a
+# hickory with the fixes.
+
+[advisories]
+ignore = ["RUSTSEC-2026-0118", "RUSTSEC-2026-0119"]
