@@ -98,7 +98,7 @@ pub fn u64_to_noun(slab: &mut NounSlab<NockJammer>, val: u64) -> Noun {
 
 /// The generic noun carried by an entry, or an error if the entry holds one of
 /// the chain's typed payloads (lock, bridge deposit/withdrawal) instead.
-fn entry_noun<'a>(entry: &'a NoteDataEntry) -> Result<&'a OwnedBasedNoun> {
+fn entry_noun(entry: &NoteDataEntry) -> Result<&OwnedBasedNoun> {
     match &entry.value {
         NoteDataValue::Noun(noun) => Ok(noun),
         _ => Err(anyhow::anyhow!(
