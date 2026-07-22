@@ -26,6 +26,7 @@ hoon/apps
 hoon/dat
 hoon/jams
 hoon/test-jams
+hoon/tests
 hoon/trivial.hoon
 
 # OS

@@ -24,7 +24,7 @@ fi
 
 echo "Creating nockchain symlinks in hoon/..."
 
-for dir in common apps dat jams test-jams; do
+for dir in common apps dat jams test-jams tests; do
     if [[ -L "$HOON_DIR/$dir" ]]; then
         echo "  $dir: already linked"
     else
