@@ -3,27 +3,26 @@ name: JAM Determinism
 # Recompiles each kernel from protocol/lib/*.hoon and asserts the resulting
 # JAM sha256 matches scripts/CHECKSUMS.sha256 (the maintainer's reference).
 #
-# DISABLED (2026-05-25): the gate is over-strict for our build model. The
-# committed kernel JAMs are byte-shipped artifacts produced by the maintainer
-# environment (preflight `scripts/check-jam.sh` is the local gate). CI's
-# hoonc binary — even when built from the same nockchain SHA and pinned
-# rustc — produces different output bytes than the local hoonc, almost
-# certainly due to glibc / system-lib differences between ubuntu-latest
-# and the maintainer's distro. The gate as written cannot tell apart
-# "kernel source changed unintentionally" from "you're rebuilding on a
-# different OS." Users consume the committed JAMs via include_bytes!,
-# not via local rebuild + SHA check, so the trust model is "we ship,
-# you trust" — not "rebuild and verify."
+# RE-ENABLED (2026-07-22) on honk, the native Hoon compiler. The gate was
+# disabled 2026-05-25 because CI's hoonc produced different bytes than the
+# maintainer's; the root cause turned out to be the compiler baking the
+# build machine's absolute entry path into the artifact (both in the entry
+# %spot and in the dir-hash target key) — not glibc. honk with cwd-relative
+# spot paths produces byte-identical jams from any checkout location
+# (verified by cross-directory builds), which is what makes this gate
+# meaningful. If CI bytes still diverge on ubuntu-latest, treat that as a
+# portability finding to report, not as a kernel-source regression.
 #
-# Re-enable once we land a reproducible-build setup (e.g. a fixed-glibc
-# container in the workflow that produces canonical JAM bytes). Until
-# then, scripts/check-jam.sh in the local preflight is the canonical
-# gate.
+# HONK_REV is NOCK_PIN plus the honk fixes not yet merged upstream
+# (nockchain/nockchain PR #146 + cwd-relative spot paths), staged on the
+# sobchek fork. When those land upstream, point the checkout back at
+# nockchain/nockchain and fold HONK_REV into NOCK_PIN.
 #
-# Local equivalent: scripts/check-jam.sh (still required by the pre-push hook).
+# Local equivalent: scripts/check-jam.sh (required by the pre-push hook).
 #
-# Pins nockchain to NOCK_PIN (mirrored from vesl-nockup/sync.sh). Bump both
-# when sibling nockchain moves.
+# NOCK_PIN (mirrored from vesl-nockup/sync.sh) still pins the nockchain
+# tree for every other consumer; HONK_REV's tree is identical — the extra
+# commits touch only the compiler crates.
 
 on:
   push:
@@ -33,10 +32,10 @@ on:
 
 env:
   NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
+  HONK_REV: 82ab7bffdba28dfcbd04a7006a9d3244db3c2d7c
 
 jobs:
   jam-determinism:
-    if: false  # see header — gate disabled pending portable hoonc env
     runs-on: ubuntu-latest
     steps:
       - name: Checkout vesl-core
@@ -44,11 +43,11 @@ jobs:
         with:
           path: vesl-core
 
-      - name: Checkout nockchain (sibling)
+      - name: Checkout nockchain (honk compiler rev)
         uses: actions/checkout@v4
         with:
-          repository: nockchain/nockchain
-          ref: ${{ env.NOCK_PIN }}
+          repository: sobchek/nockchain
+          ref: ${{ env.HONK_REV }}
           path: nockchain
 
       - uses: dtolnay/rust-toolchain@nightly
@@ -57,17 +56,17 @@ jobs:
         with:
           workspaces: nockchain
 
-      - name: Cache hoonc binary
-        id: hoonc-cache
+      - name: Cache honk binary
+        id: honk-cache
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/hoonc
-          key: hoonc-${{ env.NOCK_PIN }}
+          path: ~/.cargo/bin/honk
+          key: honk-${{ env.HONK_REV }}
 
-      - name: Install hoonc (cache miss only)
-        if: steps.hoonc-cache.outputs.cache-hit != 'true'
+      - name: Install honk (cache miss only)
+        if: steps.honk-cache.outputs.cache-hit != 'true'
         working-directory: nockchain
-        run: make install-hoonc
+        run: cargo install --locked --force --path crates/honk --bin honk
 
       - name: Set up hoon symlinks
         working-directory: vesl-core

@@ -43,15 +43,16 @@ if [[ ! -d "$NOCK_HOME/hoon/common" ]]; then
     exit 2
 fi
 
-# -- Check hoonc --------------------------------------------------------------
-if ! command -v hoonc >/dev/null 2>&1; then
-    echo "error: hoonc not on PATH." >&2
-    echo "       build it from the nockchain monorepo: cd \$NOCK_HOME && make install-hoonc" >&2
+# -- Check honk ---------------------------------------------------------------
+if ! command -v honk >/dev/null 2>&1; then
+    echo "error: honk not on PATH." >&2
+    echo "       install it from the pinned nockchain checkout:" >&2
+    echo "       cargo install --locked --force --path \$NOCK_HOME/crates/honk --bin honk" >&2
     exit 2
 fi
 
 # -- Check library symlinks (setup-hoon-tree.sh pre-req) ----------------------
-for dir in common apps dat jams test-jams; do
+for dir in common apps dat jams test-jams tests; do
     if [[ ! -L "hoon/$dir" ]]; then
         echo "error: hoon/$dir is missing — run scripts/setup-hoon-tree.sh first." >&2
         exit 2
@@ -81,18 +82,16 @@ for kernel in guard mint settle forge; do
         continue
     fi
 
-    # Compile into a per-kernel out file so a partial run doesn't corrupt later
-    # iterations. --ephemeral runs the build in-memory (no PMA data dir), so
-    # looping over kernels doesn't trip hoonc's "data directory not empty"
-    # guard; hoonc writes out.jam in cwd, rename once we have it.
+    # honk emits cwd-relative source paths, so the bytes are reproducible
+    # from any checkout location — that is what makes this gate meaningful.
     rm -f out.jam
-    if ! hoonc --ephemeral "$src" hoon/ >/dev/null 2>&1; then
-        echo "FAIL ${kernel}: hoonc exited non-zero." >&2
+    if ! honk --new --output out.jam --prelude hoon/common/hoon.hoon "$src" hoon >/dev/null 2>&1; then
+        echo "FAIL ${kernel}: honk exited non-zero." >&2
         status=1
         continue
     fi
     if [[ ! -f out.jam ]]; then
-        echo "FAIL ${kernel}: hoonc produced no out.jam (library symlink missing?)." >&2
+        echo "FAIL ${kernel}: honk produced no out.jam (library symlink missing?)." >&2
         status=1
         continue
     fi
@@ -115,12 +114,13 @@ if [[ "$status" -ne 0 ]]; then
     echo "" >&2
     echo "JAM determinism check failed." >&2
     echo "A refactor changed kernel bytes. Either: (a) back out the change, or" >&2
-    echo "(b) if the change is intentional, update assets/CHECKSUMS.sha256 in a" >&2
+    echo "(b) if the change is intentional, update scripts/CHECKSUMS.sha256 in a" >&2
     echo "dedicated commit with a reviewer explanation." >&2
     echo "" >&2
-    echo "If kernel sources are UNMODIFIED, your local hoonc may be stale" >&2
-    echo "relative to NOCK_PIN (rebuild: cd \$NOCK_HOME && make install-hoonc)," >&2
-    echo "or the committed JAMs predate the current NOCK_PIN and need regen." >&2
+    echo "If kernel sources are UNMODIFIED, your local honk may be stale" >&2
+    echo "relative to the pinned compiler rev (reinstall: cargo install --locked" >&2
+    echo "--force --path \$NOCK_HOME/crates/honk --bin honk), or the committed" >&2
+    echo "JAMs predate the current NOCK_PIN and need regen." >&2
     exit 1
 fi
 
