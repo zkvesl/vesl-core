@@ -6,11 +6,10 @@ description = "Snapshot/resume wrapper for live NockApps — bundle kernel state
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-# nockapp's NockApp::export_state (added in
-# nockchain feature/nockapp-export-state) is the sole upstream surface
-# this crate consumes for snapshotting; resume() rides the existing
-# Cli::state_jam path inside boot::setup. Path-dep matches every other
-# vesl-core member.
+# nockapp's NockApp::export plus ExportedState encoding are the sole
+# upstream surface this crate consumes for snapshotting; resume() rides
+# the existing Cli::state_jam path inside boot::setup. Path-dep matches
+# every other vesl-core member.
 nockapp = { path = "../../../nockchain/crates/nockapp", default-features = false }
 
 anyhow = "1.0"

@@ -35,6 +35,8 @@ use std::time::SystemTime;
 use anyhow::{Context, Result, anyhow};
 use nockapp::NockApp;
 use nockapp::kernel::boot;
+use nockapp::nockapp::export::ExportedState;
+use nockapp::noun::slab::NockJammer;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -128,9 +130,16 @@ pub async fn snapshot(app: &NockApp, dir: &Path, source_app_hoon: &Path) -> Resu
     let vesl_checkpoint_version = env!("CARGO_PKG_VERSION").to_string();
 
     let state_jam_path = dir.join(STATE_JAM);
-    app.export_state(&state_jam_path)
+    let state = app
+        .export()
         .await
-        .map_err(|e| anyhow!("export_state failed: {e}"))?;
+        .map_err(|e| anyhow!("export failed: {e}"))?;
+    let state_bytes = ExportedState::from_loadstate::<NockJammer>(state)
+        .encode()
+        .context("encode exported state")?;
+    tokio::fs::write(&state_jam_path, state_bytes)
+        .await
+        .with_context(|| format!("write {}", state_jam_path.display()))?;
 
     let meta = MetaToml {
         snapshot: MetaSection {
