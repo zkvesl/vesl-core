@@ -31,6 +31,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 JAM_WF=".github/workflows/jam-determinism.yml"
+CI_WF=".github/workflows/ci.yml"
 DOCKER_PIN="docker/NOCKCHAIN_COMMIT"
 
 status=0
@@ -90,21 +91,23 @@ validate_sha_exists() {
 
 # --- NOCK_PIN extraction ---
 jam_sha=$(extract_sha "$JAM_WF" 'NOCK_PIN:[[:space:]]*[0-9a-f]+')
+ci_sha=$(extract_sha "$CI_WF" 'NOCK_PIN:[[:space:]]*[0-9a-f]+')
 docker_sha=$(extract_sha "$DOCKER_PIN" '[0-9a-f]{40}')
 
 # --- Shape validation ---
 validate_sha_shape "$JAM_WF NOCK_PIN" "$jam_sha"
+validate_sha_shape "$CI_WF NOCK_PIN" "$ci_sha"
 validate_sha_shape "$DOCKER_PIN" "$docker_sha"
 
 # --- Agreement (AUDIT 2026-05-19 H-21: both sites are tracked and
 # bump-pin.sh writes them together, so a mismatch is now a real error,
 # not the historical drift the prior warn-only check tolerated) ---
 if [[ -n "$jam_sha" && -n "$docker_sha" ]]; then
-    if [[ "$jam_sha" == "$docker_sha" ]]; then
-        ok "NOCK_PIN: jam-determinism.yml and $DOCKER_PIN agree ($jam_sha)"
+    if [[ "$jam_sha" == "$docker_sha" && "$jam_sha" == "${ci_sha:-$jam_sha}" ]]; then
+        ok "NOCK_PIN: jam-determinism.yml, ci.yml and $DOCKER_PIN agree ($jam_sha)"
     else
-        err "NOCK_PIN: jam-determinism.yml ($jam_sha) != $DOCKER_PIN ($docker_sha)"
-        err "  bump both atomically via: scripts/bump-pin.sh nock <sha>"
+        err "NOCK_PIN: jam-determinism.yml ($jam_sha) / ci.yml (${ci_sha:-missing}) / $DOCKER_PIN ($docker_sha) disagree"
+        err "  bump all atomically via: scripts/bump-pin.sh nock <sha>"
     fi
 fi
 
