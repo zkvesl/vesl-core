@@ -47,11 +47,36 @@ vesl-core path-deps a sibling [nockchain](https://github.com/nockchain/nockchain
 ```
 <parent>/
   vesl-core/         (this repo)
-  nockchain/         (sibling clone at the NOCK_PIN SHA — see scripts/check-pins.sh)
+  nockchain/         (sibling clone, checked out at NOCK_PIN)
   vesl-wallet/       (sibling clone)
 ```
 
 If your layout differs, edit `crates/*/Cargo.toml` path-deps.
+
+### Toolchain
+
+| Piece | What it tracks | Where the pin lives |
+|---|---|---|
+| Rust | `nightly-2026-04-03` — the same nightly nockchain pins | `rust-toolchain.toml` |
+| nockchain | upstream `master` | `NOCK_PIN` in `.github/workflows/ci.yml` |
+| honk | `master` plus a few compiler fixes staged on `sobchek/nockchain` pending upstream review | `HONK_REV` in `.github/workflows/jam-determinism.yml` |
+
+The nightly is pinned to a date, not floating. `nockvm` uses the unstable `core::hint::cold_path()`, so a bare `nightly` is a build waiting to break on a toolchain you didn't choose. When nockchain moves its nightly, this repo moves with it.
+
+`scripts/check-pins.sh` asserts every pin site agrees and that each SHA actually exists upstream. Bump with `scripts/bump-pin.sh <type> <sha>` rather than editing the sites by hand — it rewrites them in lockstep.
+
+### Compiling kernels
+
+Kernel JAMs are built with **honk**, the native Hoon compiler:
+
+```bash
+cargo install --locked --force --path ../nockchain/crates/honk --bin honk
+honk --new --output out.jam --prelude hoon/common/hoon.hoon protocol/lib/<name>-kernel.hoon hoon
+```
+
+honk is the primary compiler here because its output bytes are reproducible from any checkout location. `hoonc` still works for cross-checks, but it bakes absolute build paths into the JAM, so its bytes are machine-dependent — never regenerate a committed JAM with it.
+
+The four JAMs in `assets/` are what actually ship: each `kernels/*` crate embeds one via `include_bytes!` and panics at boot if the hash drifts. After editing any `protocol/lib/*-kernel.hoon`, regenerate and run `scripts/check-jam.sh`, which verifies each JAM against `scripts/CHECKSUMS.sha256`. CI gates the same assertion on every PR.
 
 ## Documentation
 
