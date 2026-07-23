@@ -15,14 +15,16 @@ Starter template for building a grafted NockApp with Vesl. All Hoon dependencies
 2. Compile the kernel:
 
 ```bash
-hoonc --new hoon/app/app.hoon hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 ```
+
+This scaffold's `app.hoon` opens with `/+  lib`, so it needs a `hoon/lib/lib.hoon` — supply your own domain library there before the first compile.
 
 3. Build and run:
 
 ```bash
-cargo +nightly build
-cargo +nightly run
+cargo +nightly-2026-04-03 build
+cargo +nightly-2026-04-03 run
 ```
 
 ## Customize
@@ -54,7 +56,7 @@ Cargo.toml                  dependencies (local paths)
 
 Adjust the paths in `Cargo.toml` to point to your local clones of nockchain and vesl.
 
-Requires nightly Rust (`cargo +nightly build`).
+Requires nightly Rust (`cargo +nightly-2026-04-03 build`).
 
 ## Standalone sandbox setup
 

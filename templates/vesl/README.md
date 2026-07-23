@@ -6,8 +6,8 @@ A grafted NockApp scaffolded from the `vesl` template.
 
 ```bash
 nockup graft inject --apply hoon/app/app.hoon   # composes graft bodies into the kernel
-hoonc hoon/app/app.hoon hoon/                   # produces out.jam
-cargo +nightly run                              # boots the kernel and exercises the lifecycle
+honk --new --output out.jam --prelude hoon/common/hoon.hoon hoon/app/app.hoon hoon
+cargo +nightly-2026-04-03 run                   # boots the kernel and exercises the lifecycle
 ```
 
 Expected stdout end:
@@ -20,7 +20,7 @@ Expected stdout end:
 ## Layout
 
 - `Cargo.toml` — vesl-graft's `[[patches]]` rewrites the deps to git-deps pinned at the synced rev and adds both `[patch]` blocks during `nockup package install`. The pre-patch template ships path-deps as a fallback for sibling-clone workflows or eject mode (`nockup patches eject zkvesl/vesl-graft`).
-- `build.rs` — no-op; `out.jam` is built explicitly via `hoonc`.
+- `build.rs` — no-op; `out.jam` is built explicitly via `honk`.
 - `src/main.rs` — 30-line hull that registers a Merkle root and settles a note against it.
 - `hoon/app/app.hoon` — markered kernel template; `nockup graft inject` composes graft bodies into the `::  nockup:*` anchors.
 - `hoon/lib/lib.hoon` — stub `/+ lib` import for your domain library.

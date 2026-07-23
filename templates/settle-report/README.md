@@ -42,7 +42,7 @@ The full Vesl kernel adds Merkle proofs and STARK proving on top of this skeleto
 ## Build & Run
 
 ```bash
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 cargo build
 cargo run
 ```

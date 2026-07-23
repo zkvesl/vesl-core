@@ -54,7 +54,7 @@ The gate signature is `$-([note-id=@ data=* expected-root=@] ?)`. Cast `data` to
 
 ```bash
 # Compile Hoon kernel (requires $NOCK_HOME for tip5 primitives)
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 
 # Build Rust binary
 cargo build

@@ -10,8 +10,8 @@ The Graft pattern attaches Vesl's verification infrastructure to your kernel as 
 
 ## Prerequisites
 
-- **Nightly Rust** — nockvm requires nightly features (`cargo +nightly build`)
-- **hoonc** in your PATH (built from the nockchain monorepo)
+- **Pinned nightly Rust** — nockvm requires nightly features, and `core::hint::cold_path()` pins the date: `rustup toolchain install nightly-2026-04-03`, then `cargo +nightly-2026-04-03 build`
+- **honk** in your PATH — `cargo install --locked --force --path $NOCK_HOME/crates/honk --bin honk`
 - **`$NOCK_HOME`** set to your nockchain monorepo root (only needed if not using bundled deps)
 
 ## What You Get
@@ -229,17 +229,13 @@ The same pattern works for `%settle-verify` (soft verification, no state change)
 
 ## Compile
 
-If your template bundles zeke.hoon + ztd/ locally (like `graft-scaffold`):
+honk takes the stdlib prelude as a flag and the library root as its last positional argument:
 
 ```bash
-hoonc --new hoon/app/app.hoon hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 ```
 
-Otherwise, point to the nockchain Hoon library:
-
-```bash
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
-```
+The library root is your own `hoon/` either way. Templates that bundle zeke.hoon + ztd/ locally (like `graft-scaffold`) resolve those from it; the rest pull them from the nockchain tree. The `--prelude` path comes from the nockchain monorepo in both cases.
 
 ## The Primitives
 

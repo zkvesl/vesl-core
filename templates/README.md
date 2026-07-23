@@ -58,7 +58,7 @@ nockup project init
 cd templates/counter
 
 # Compile the Hoon kernel
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 
 # Build the Rust binary (replace handlebars vars in Cargo.toml first)
 cargo build

@@ -81,7 +81,7 @@ The Rust driver demonstrates the Mint + Guard workflow:
 
 ```bash
 # Compile Hoon kernel (requires $NOCK_HOME for tip5 primitives)
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 
 # Or use the pre-compiled out.jam (already included)
 

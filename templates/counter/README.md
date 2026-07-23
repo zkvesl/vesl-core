@@ -31,7 +31,7 @@ Every NockApp tutorial starts with "here's how to print hello world" and then ju
 
 ```bash
 # Compile Hoon kernel to JAM
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 
 # Build Rust binary
 cargo build

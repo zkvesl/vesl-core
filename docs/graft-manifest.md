@@ -42,17 +42,18 @@ protocol/lib/
 Flat — no per-graft directory. The manifest's `name` field, not its
 filename, is the canonical identifier the loader uses.
 
-**Symlink requirement.** `hoonc` resolves `/+ *foo` against the library
-root passed on its command line — in vesl, that's `hoon/`, which holds
-symlinks pointing at `protocol/lib/`. Dropping a new `.hoon` under
-`protocol/lib/` is not enough; add a matching symlink with
+**Symlink requirement.** `honk` resolves `/+ *foo` against the library
+root passed as its last positional argument — in vesl, that's `hoon/`,
+which holds symlinks pointing at `protocol/lib/`. Dropping a new `.hoon`
+under `protocol/lib/` is not enough; add a matching symlink with
 `ln -s ../../protocol/lib/<name>.hoon hoon/lib/<name>.hoon` before the
-first compile. If the symlink is missing, hoonc exits 2, emits
-`[DIAG soft] DETERMINISTIC error mote=Exit`, and writes no `out.jam` —
-the trace blames hoonc internals rather than the new file, so check the
-symlink tree first. Downstream (`vesl-nockup`) skips this by copying
-both files into `hoon/lib/` via `sync.sh`; the symlink dance only
-matters inside the vesl repo.
+first compile. If the symlink is missing, honk exits 1 and names the
+import it couldn't resolve:
+`native hoon compile failed: parse error: native import not found: `/+ foo``.
+Check the symlink tree before you go looking for a type error.
+Downstream (`vesl-nockup`) skips this by copying both files into
+`hoon/lib/` via `sync.sh`; the symlink dance only matters inside the
+vesl repo.
 
 ## `[graft]` — top-level metadata
 
@@ -140,7 +141,7 @@ Conventional sentinels:
   multi-line bodies; a leading newline after `"""` is convenient.
 - **Two-space law**: every Hoon rune in the body must be followed by
   exactly two spaces (or end-of-line). The loader does not enforce this,
-  but `hoonc` will fail downstream if violated.
+  but `honk` will fail downstream if violated.
 - **Per-marker conventions**:
   - `imports`: one or more `/+` directives. No leading `::`.
   - `state`: a single `field=type` pair to splice into the kernel's
@@ -171,7 +172,7 @@ marker. `cause` is parsed forward-compat for Phase 03f Lever 3 (cause
 destructuring); current codegen reads only `effect`.
 
 Names must be kebab-case (`^[a-z][a-z0-9-]*$`) — they're spliced
-literally into Hoon source, so a malformed name surfaces as a hoonc
+literally into Hoon source, so a malformed name surfaces as a honk
 `find . X` failure with no manifest attribution.
 
 Two grafts cannot declare the same `effect` (or `cause`) name —
@@ -369,7 +370,7 @@ Version bumps to this schema append fields, never reshape existing ones.
 | Marker missing from target file | warning; that marker is skipped, others continue |
 | All nine markers missing | hard error (nothing to wire) |
 | Banner `::  graft-inject:<name>:<marker>:begin` already present | skip that graft-marker pair; log `skipped` |
-| Body contains tabs (mixed indentation) | injection proceeds — `hoonc` may fail downstream |
+| Body contains tabs (mixed indentation) | injection proceeds — `honk` may fail downstream |
 
 ## `[graft.gates]` — catalog gate selection
 
@@ -482,7 +483,7 @@ Or, equivalently with `audit-write`:
 
 Convention violations (e.g. your kernel stores counter-graft state
 at `cnt.state` instead of `counter.state`) surface as a
-`find . counter` hoonc error at the helper call site, not an internal
+`find . counter` honk error at the helper call site, not an internal
 trace. Out of scope for the helpers: kernel-composite grafts (settle,
 mint, guard, forge, intent) — see the library header for rationale.
 

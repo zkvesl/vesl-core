@@ -27,7 +27,7 @@ MOVED.md                — redirect stub: the old `graft-intent` hash-gate demo
 
 ```bash
 # Compile (from the vesl repo root — resolves hoon/lib/ via the vesl tree):
-hoonc templates/graft-intent/hoon/app/app.hoon hoon/ --new
+honk --new --output out.jam --prelude hoon/common/hoon.hoon templates/graft-intent/hoon/app/app.hoon hoon
 cp out.jam templates/graft-intent/out.jam
 
 # Build the Rust driver:

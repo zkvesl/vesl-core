@@ -34,7 +34,7 @@ This is the generalized version of Vesl's root registration, stripped down to th
 ## Build & Run
 
 ```bash
-hoonc hoon/app/app.hoon $NOCK_HOME/hoon/
+honk --new --output out.jam --prelude $NOCK_HOME/hoon/common/hoon.hoon hoon/app/app.hoon hoon
 cargo build
 cargo run
 ```
