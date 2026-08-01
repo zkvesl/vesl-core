@@ -18,6 +18,26 @@ name: JAM Determinism
 # sobchek fork. When those land upstream, point the checkout back at
 # nockchain/nockchain and fold HONK_REV into NOCK_PIN.
 #
+# ⛔ NOT MERGEABLE UNTIL 26b146fe IS PUSHED TO sobchek/nockchain.
+# 2026-08-01: HONK_REV moves to nockcloud's arena/seminoun-DAG branch
+# (ea6a8f34) with the cwd-relative spot commit 82ab7bff cherry-picked on top
+# (= 26b146fe). Measured before bumping — all four kernels still reproduce
+# scripts/CHECKSUMS.sha256 byte-for-byte, from two different checkout paths,
+# so this is a compiler swap with NO artifact change and no checksum bump.
+#
+# Two reasons to move, in order:
+#   1. CORRECTNESS. The old 82ab7bff predates nockcloud's axis and wide-`=/`
+#      fixes and FAILS both of honk's own regression assets. vesl-core's
+#      kernels don't reach those constructs today, and unlike zkML's gate.sh
+#      there is no tripwire here that would tell us if they started to.
+#   2. forge-kernel compiles 9.3% faster with 13% less peak RSS; guard and
+#      settle are unchanged (+0.9%, ~50 ms).
+# Full record: zkML docs/honk/ARENA-DAG-BENCHMARK.md.
+#
+# ⚑ Without the 82ab7bff cherry-pick this branch is PATH-DEPENDENT: measured,
+#   the same source at two different absolute paths yields different bytes,
+#   which is exactly the failure that had this gate disabled 2026-05-25.
+#
 # Local equivalent: scripts/check-jam.sh (required by the pre-push hook).
 #
 # NOCK_PIN (mirrored from vesl-nockup/sync.sh) still pins the nockchain
@@ -32,7 +52,7 @@ on:
 
 env:
   NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
-  HONK_REV: 82ab7bffdba28dfcbd04a7006a9d3244db3c2d7c
+  HONK_REV: 26b146fe1322f3c832a544ae3dc75712c507cf00
 
 jobs:
   jam-determinism:
