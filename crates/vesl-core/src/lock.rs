@@ -22,12 +22,36 @@ use nockchain_types::tx_engine::v1::tx::{
 
 /// Two-branch lock for a work-bounty note.
 ///
-/// Branch 1 is the payout spend-condition (a simple pkh). Branch 2
+/// Branch 1 is the settle spend-condition (a simple pkh). Branch 2
 /// commits to the statement a future proof-verifying branch would
 /// check: the commitment hash is rendered as a pkh no key hashes to,
 /// so the branch is deliberately unspendable today. Swapping it for a
 /// real verifying branch later changes the lock root on newly posted
 /// notes — a lock change, not a tx-shape change.
+///
+/// ⚖️⚖️ **`payout_pkh` IS THE MINER'S KEY, NOT THE PLATFORM'S** (owner,
+/// 2026-08-25; zkML `docs/plans/lockstat` `SYSTEM §0d`, `FC-96`). Until
+/// that ruling the escrow was posted at job-posting time, before any
+/// miner existed, so branch 1 could only pin a deploy constant — and a
+/// settling miner had to ask the platform's key to sign the spend it had
+/// itself composed (`DV-10`). The escrow is now created AFTER the audit,
+/// bound to the miner who served, so this argument is the pkh the miner
+/// declared inside what it signed, and the miner alone can spend.
+///
+/// ⛔ **THE DESTINATION HAS THREE CONJUNCTS HERE, AND THIS SHIPS ONE.**
+/// The ruled settle condition is `[%pkh miner] ∧ [%zkp statement] ∧ [%tim
+/// before D]`; `SpendCondition` really is an AND-list upstream, so the
+/// shape is expressible — but `%zkp` is not a lock primitive
+/// (`+lock-primitive` is a four-way `$%`: `%pkh %tim %hax %brn`,
+/// `nockchain/hoon/common/tx-engine-1.hoon:1516-1526`), and neither the
+/// deadline `D` nor the refund-key holder is decided. So the statement
+/// stays on branch 2 as an unspendable placeholder and the timelock is
+/// absent. Named successor: the `%zkp` conjunct when the primitive lands,
+/// the `%tim` pair when `D` and the refund key are ruled.
+/// ⛔ Do not add a second `%pkh` conjunct to close the gap in the
+/// meantime — two `%pkh`s in one AND-list are UNSATISFIABLE, because
+/// `check:pkh` demands the whole witness map equal its own `m`
+/// (`tx-engine-1.hoon:2064-2081`).
 pub fn bounty_lock(payout_pkh: Hash, statement_commitment: Hash) -> Lock {
     Lock::V2(LockV2 {
         p: SpendCondition::simple_pkh(payout_pkh),
