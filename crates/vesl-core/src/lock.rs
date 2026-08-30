@@ -74,6 +74,15 @@ pub const HOLD_BRANCH_VOID: u64 = 2;
 pub const HOLD_BRANCH_RECLAIM: u64 = 3;
 /// See [`HOLD_BRANCH_CAPTURE`]. Unspendable by construction — `check`
 /// answers `%|` for `%brn` unconditionally (`tx-engine-1.hoon:2267`).
+///
+/// ⭐⭐ **IT IS NO LONGER ONLY PADDING — IT CARRIES THE JOB.** A branch is a
+/// LIST of conditions, ANDed (`levy` over them, `tx-engine-1.hoon:2260-2267`),
+/// and `%brn` answers `%|` *unconditionally*, so a branch holding a burn is
+/// unspendable **whatever else sits beside it**. That makes this branch free
+/// capacity in the ADDRESS: it now also carries `job_com`, so the address the
+/// buyer's money sits at is a statement about the job it was paid for, and one
+/// payment cannot back two jobs. ⛔ The burn stays FIRST, and the branch stays
+/// exactly as unspendable as it was.
 pub const HOLD_BRANCH_PADDING: u64 = 4;
 
 /// Four-branch lock for the buyer's payment note — **the hold** (`XD-3`,
@@ -88,7 +97,7 @@ pub const HOLD_BRANCH_PADDING: u64 = 4;
 /// B1  CAPTURE  [%pkh m=2 {buyer, platform}]  AND  [%hax {h_k}]
 /// B2  VOID     [%pkh m=2 {buyer, platform}]
 /// B3  RECLAIM  [%pkh m=1 {buyer}]  AND  [%tim rel.min = r_reclaim]
-/// B4  padding  [%brn ~]
+/// B4  padding  [%brn ~]  AND  [%hax {job_com}]
 /// ```
 ///
 /// ⛔⛔ **Capture and void MUST be separate branches.** A void pays the buyer
@@ -122,7 +131,56 @@ pub const HOLD_BRANCH_PADDING: u64 = 4;
 ///
 /// ⛔ Spendable only at `height >= bythos_phase`, like every multi-branch
 /// lock; see [`lock_merkle_proof`].
-pub fn hold_lock(buyer_pkh: Hash, platform_pkh: Hash, h_k: Hash, r_reclaim: u64) -> Lock {
+///
+/// ## ⭐⭐ `job_com` — the padding branch carries the job
+///
+/// ⚑ *In plain terms: the address the money sits at stops being an opaque name
+/// and becomes a statement about the job it was paid for. A payment made for
+/// one job is arithmetically incapable of sitting at another job's address.*
+///
+/// `job_com` is the buyer's **order digest** — the value that is also its
+/// payment id, so both the buyer building this note and the platform checking
+/// it already hold it and no new field crosses the wire. ⛔ It must NOT be
+/// `input_com`: the buyer builds the note, and `input_com` is the platform's
+/// and does not exist yet at that moment.
+///
+/// ⛔ It rides `B4` and not a real branch **because `B4` can never be spent**
+/// (see [`HOLD_BRANCH_PADDING`]). Putting it on a spendable branch — or on a
+/// bare `%hax` of its own — would make the note a bearer instrument: `%hax`
+/// alone is satisfied by publishing a preimage, with no signature at all.
+///
+/// ⛔ It is an operand of the address, so changing what is committed here moves
+/// every hold — the same rule `r_reclaim` carries.
+///
+/// ⚑ Nothing about it reaches the chain in the clear: a spend reveals only the
+/// branch it uses, and this branch is never spent.
+///
+/// ## ⛔⛔ Why this returns a `Result`
+///
+/// `Pkh::new(2, vec![P, P])` goes through `ZSet`, which **deduplicates
+/// silently** (`nockchain-math/src/zoon/zset.rs`, pinned upstream by
+/// `quickcheck_owned_zset_ignores_duplicate_items`). Two equal hashes become a
+/// ONE-element set still demanding `m=2`, and `check:pkh` requires exactly `m`
+/// witness entries whose keys are a subset of that set
+/// (`tx-engine-1.hoon:2064-2081`) ⇒ **`B1` and `B2` both become unsatisfiable**,
+/// leaving only the buyer's own reclaim. The note is built without complaint and
+/// says nothing until a live settlement. ⇒ refuse it here, the one place that
+/// can see both halves.
+pub fn hold_lock(
+    buyer_pkh: Hash,
+    platform_pkh: Hash,
+    h_k: Hash,
+    r_reclaim: u64,
+    job_com: Hash,
+) -> anyhow::Result<Lock> {
+    if buyer_pkh == platform_pkh {
+        anyhow::bail!(
+            "the buyer and the platform hash to the same address, so the 2-of-2 would \
+             collapse to a one-element set still demanding two signatures: capture and \
+             void would both be unsatisfiable and only the buyer's reclaim would remain. \
+             Refusing to build a note nobody can capture."
+        );
+    }
     let both = || LockPrimitive::Pkh(Pkh::new(2, vec![buyer_pkh.clone(), platform_pkh.clone()]));
 
     // B1 — capture. Conjunct order is part of the address; `XD-3` writes the
@@ -138,10 +196,15 @@ pub fn hold_lock(buyer_pkh: Hash, platform_pkh: Hash, h_k: Hash, r_reclaim: u64)
             abs: TimelockRangeAbsolute::none(),
         }),
     ]);
-    // B4 — the padding the chain's own `from-list` would have appended.
-    let padding = SpendCondition::new(vec![LockPrimitive::Burn]);
+    // B4 — the padding the chain's own `from-list` would have appended, now
+    // also carrying the job. ⛔ `Burn` stays FIRST: conjunct order is part of
+    // the address, and the burn is what makes the branch unspendable.
+    let padding = SpendCondition::new(vec![
+        LockPrimitive::Burn,
+        LockPrimitive::Hax(Hax::new(vec![job_com])),
+    ]);
 
-    Lock::V4(LockV4 {
+    Ok(Lock::V4(LockV4 {
         p: LockV2 {
             p: capture,
             q: void,
@@ -150,7 +213,7 @@ pub fn hold_lock(buyer_pkh: Hash, platform_pkh: Hash, h_k: Hash, r_reclaim: u64)
             p: reclaim,
             q: padding,
         },
-    })
+    }))
 }
 
 /// Consensus lock root (`hash:lock`).
@@ -485,7 +548,15 @@ mod tests {
     #[test]
     fn the_hold_lock_is_xd3s_four_branch_shape() {
         let (buyer, platform, h_k) = (pkh(10), pkh(20), pkh(30));
-        let lock = hold_lock(buyer.clone(), platform.clone(), h_k.clone(), 576);
+        let job_com = pkh(40);
+        let lock = hold_lock(
+            buyer.clone(),
+            platform.clone(),
+            h_k.clone(),
+            576,
+            job_com.clone(),
+        )
+        .expect("two distinct parties");
         let branches = lock.flatten_spend_conditions();
         assert_eq!(lock.spend_condition_count(), 4);
 
@@ -517,10 +588,18 @@ mod tests {
             other => panic!("reclaim's second conjunct should be %tim, got {other:?}"),
         }
 
-        // B4 padding — exactly what `from-list` would have appended.
+        // B4 padding — what `from-list` would have appended, AND the job. ⛔
+        // The burn is FIRST and is what keeps the branch unspendable; the
+        // `%hax` beside it never gets a chance to be satisfied, because `levy`
+        // over the conjuncts meets `%brn` answering `%|` unconditionally
+        // (`tx-engine-1.hoon:2260-2267`).
         assert_eq!(
             branches[(HOLD_BRANCH_PADDING - 1) as usize],
-            SpendCondition::new(vec![LockPrimitive::Burn])
+            SpendCondition::new(vec![
+                LockPrimitive::Burn,
+                LockPrimitive::Hax(Hax::new(vec![job_com.clone()])),
+            ]),
+            "the padding branch carries the job, with the burn first"
         );
 
         // Capture and void must be genuinely different branches, or the
@@ -533,7 +612,7 @@ mod tests {
     /// cannot execute — which strands the money exactly as surely.
     #[test]
     fn every_hold_branch_is_provable() {
-        let lock = hold_lock(pkh(10), pkh(20), pkh(30), 576);
+        let lock = hold_lock(pkh(10), pkh(20), pkh(30), 576, pkh(40)).expect("hold");
         let root = lock_root(&lock).expect("hold root");
         for (branch, axis) in [
             (HOLD_BRANCH_CAPTURE, 12),
@@ -553,16 +632,25 @@ mod tests {
     /// be captured by publishing another.
     #[test]
     fn the_hold_address_binds_the_key() {
-        let base = hold_lock(pkh(10), pkh(20), pkh(30), 576);
-        let other_key = hold_lock(pkh(10), pkh(20), pkh(31), 576);
-        let other_wait = hold_lock(pkh(10), pkh(20), pkh(30), 577);
-        let other_buyer = hold_lock(pkh(11), pkh(20), pkh(30), 576);
+        let h = |b, p, k, w, j| hold_lock(b, p, k, w, j).expect("hold");
+        let base = h(pkh(10), pkh(20), pkh(30), 576, pkh(40));
+        let other_key = h(pkh(10), pkh(20), pkh(31), 576, pkh(40));
+        let other_wait = h(pkh(10), pkh(20), pkh(30), 577, pkh(40));
+        let other_buyer = h(pkh(11), pkh(20), pkh(30), 576, pkh(40));
+        let other_job = h(pkh(10), pkh(20), pkh(30), 576, pkh(41));
         let r = |l: &Lock| lock_root(l).unwrap();
         assert_ne!(r(&base), r(&other_key), "h_k is an operand of the address");
         assert_ne!(r(&base), r(&other_wait), "r_reclaim is an operand too");
         assert_ne!(r(&base), r(&other_buyer));
+        // ⭐⭐ And the job. Without this the padding branch commits to nothing:
+        // a commitment that does not move the address is decoration.
+        assert_ne!(
+            r(&base),
+            r(&other_job),
+            "job_com is an operand of the address — one payment cannot back two jobs"
+        );
         // ...and it is a pure function of its operands.
-        assert_eq!(r(&base), r(&hold_lock(pkh(10), pkh(20), pkh(30), 576)));
+        assert_eq!(r(&base), r(&h(pkh(10), pkh(20), pkh(30), 576, pkh(40))));
     }
 
     /// ⚑ The 2-of-2 is a threshold over a SET, so the two parties may be
@@ -570,8 +658,8 @@ mod tests {
     /// already-proven half of `F1` reaching the artifact it actually guards.
     #[test]
     fn the_hold_address_does_not_depend_on_which_party_is_named_first() {
-        let a = hold_lock(pkh(10), pkh(20), pkh(30), 576);
-        let b = hold_lock(pkh(20), pkh(10), pkh(30), 576);
+        let a = hold_lock(pkh(10), pkh(20), pkh(30), 576, pkh(40)).expect("hold a");
+        let b = hold_lock(pkh(20), pkh(10), pkh(30), 576, pkh(40)).expect("hold b");
         // B1 and B2 are symmetric in the pair; B3 names the buyer alone, so
         // the whole lock is not symmetric — compare the branches that are.
         let (ba, bb) = (a.flatten_spend_conditions(), b.flatten_spend_conditions());

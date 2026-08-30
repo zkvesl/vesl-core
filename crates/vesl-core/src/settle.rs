@@ -379,9 +379,24 @@ pub fn build_hold_witness(
         Vec::new()
     };
 
+    // ⛔⛔ A branch carrying a `%brn` CANNOT BE SPENT, whatever else is in it —
+    // `check` walks the conjuncts with `levy` and answers `%|` for `%brn`
+    // unconditionally (`tx-engine-1.hoon:2260-2267`). Since the hold's padding
+    // branch gained the job commitment it also carries a `%hax`, and demanding a
+    // preimage for that would be demanding one that CANNOT EXIST: `job_com` is
+    // the order's digest over field elements, not `hash-noun` of any noun. The
+    // only reason to build a witness for this branch at all is to demonstrate
+    // that consensus refuses it (`hold_lifecycle_devnet`), and that
+    // demonstration must stay constructible.
+    //
+    // ⚑ This does not weaken the capture: `B1` carries no `%brn`, so its
+    // preimage requirement below is untouched. What is skipped here is a
+    // requirement on a branch no witness can ever spend.
+    let unspendable = condition.iter().any(|p| matches!(p, LockPrimitive::Burn));
+
     // The delivery condition. Fail closed on a missing preimage: this is the
     // one refusal the whole row exists to make certain of.
-    for primitive in condition.iter() {
+    for primitive in condition.iter().filter(|_| !unspendable) {
         if let LockPrimitive::Hax(set) = primitive {
             for wanted in set.0.iter() {
                 let entry = hax.iter().find(|e| &e.hash == wanted).ok_or_else(|| {
@@ -718,7 +733,14 @@ mod tests {
             hash: h_k.clone(),
             value,
         };
-        let lock = crate::lock::hold_lock(pkh_of(&buyer_sk), pkh_of(&platform_sk), h_k, 4);
+        let lock = crate::lock::hold_lock(
+            pkh_of(&buyer_sk),
+            pkh_of(&platform_sk),
+            h_k,
+            4,
+            Hash::from_limbs(&[7, 7, 7, 7, 7]),
+        )
+        .expect("buyer and platform are distinct keys");
         (lock, buyer_sk, platform_sk, preimage)
     }
 
@@ -845,6 +867,12 @@ mod tests {
     /// The padding branch carries no `%pkh` at all, so it takes no signatures —
     /// and it is unspendable at consensus regardless (`%brn` answers `%|`).
     /// Building a witness for it must not look like authorization.
+    ///
+    /// ⚑ Since the branch gained the job commitment it also carries a `%hax`,
+    /// and a witness for it must STILL be constructible without a preimage —
+    /// the only reason to build one is to demonstrate that consensus refuses
+    /// the branch, and `job_com` has no preimage to supply. A builder that
+    /// demanded one would delete row 0's padding control.
     #[test]
     fn the_padding_branch_takes_no_signatures() {
         let (lock, buyer, _p, _k) = hold_fixture();
@@ -852,5 +880,29 @@ mod tests {
         assert!(build_hold_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![]).is_err());
         let w = build_hold_witness(&lock, b, 10, 1, &[], &sh(), vec![]).expect("no signers");
         assert!(w.pkh_signature.0.is_empty());
+        assert!(
+            w.hax.is_empty(),
+            "the padding branch publishes nothing — it cannot be spent, so there is \
+             nothing for a preimage to buy"
+        );
+    }
+
+    /// ⭐⭐ THE CAPTURE'S PREIMAGE REQUIREMENT IS UNTOUCHED BY THE SKIP ABOVE.
+    ///
+    /// ⚑ *In plain terms: we stopped demanding a key for the dead branch. This
+    /// checks we did not stop demanding one for the branch that takes the
+    /// money.* Without this the exemption could quietly widen to every branch
+    /// and the delivery condition would evaporate — the one thing row 0 exists
+    /// to guarantee.
+    #[test]
+    fn skipping_the_dead_branchs_hashlock_does_not_skip_the_captures() {
+        let (lock, buyer, platform, _preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let why = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
+            .expect_err("a capture with no preimage must still be refused");
+        assert!(
+            why.to_string().contains("must publish the key"),
+            "the refusal must name the capture's key, got: {why}"
+        );
     }
 }
