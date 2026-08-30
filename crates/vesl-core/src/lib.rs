@@ -78,7 +78,10 @@ pub use graft_pokes::validate::{
     Rule as ValidateRule, build_validate_clear_poke, build_validate_init_poke,
 };
 pub use guard::{Guard, GuardError};
-pub use lock::{bounty_lock, first_name_for_lock, lock_merkle_proof, lock_root, verify_merk_proof};
+pub use lock::{
+    HOLD_BRANCH_CAPTURE, HOLD_BRANCH_PADDING, HOLD_BRANCH_RECLAIM, HOLD_BRANCH_VOID, bounty_lock,
+    first_name_for_lock, hold_lock, lock_merkle_proof, lock_root, verify_merk_proof,
+};
 pub use mint::{Mint, MintError};
 // Cross-graft seam helper: cue-then-jam canonicalization for bytes
 // pulled from cue-emitting grafts (e.g., %queue-popped body) before

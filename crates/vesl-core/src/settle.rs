@@ -204,11 +204,27 @@ pub fn sign_tx(
 }
 
 /// Build a Witness proving authorization to spend an input UTXO.
+///
+/// ⛔⛔ **SINGLE-CONDITION LOCKS ONLY, AND THE GUARD IS AN IDENTITY CHECK,
+/// NOT A TYPE CHECK.** This helper never receives a `Lock` — it takes
+/// `is_coinbase` and *constructs* the input's spend-condition itself. So it
+/// cannot "refuse a multi-branch lock": handed a note whose real lock is the
+/// four-branch hold (`crate::lock::hold_lock`), it would happily build a
+/// proof for a lock that is not the note's, and consensus would refuse the
+/// spend **naming nothing** — the witness's merkle root simply would not
+/// match the note's first-name (`tx-engine-1.hoon:2012-2016`).
+///
+/// `input_first_name` closes that: the caller passes the note's committed
+/// first-name, and we refuse unless the lock we assumed derives it. That is
+/// the guard `vesl-labs/services/chain/src/bounty_tx.rs` already uses, and it
+/// fails closed **with a cause**, which a type check on a value we never see
+/// could not do.
 pub fn build_witness(
     signing_key: &[nockchain_math::belt::Belt; 8],
     sig_hash: &nockchain_types::tx_engine::common::Hash,
     is_coinbase: bool,
     coinbase_timelock_min: u64,
+    input_first_name: &nockchain_types::tx_engine::common::Hash,
 ) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
     use nockchain_types::tx_engine::v1::tx::*;
 
@@ -222,9 +238,20 @@ pub fn build_witness(
     } else {
         SpendCondition::simple_pkh(pkh.clone())
     };
-    let input_lock_root = Lock::SpendCondition(input_condition.clone())
+    let input_lock = Lock::SpendCondition(input_condition.clone());
+    let input_lock_root = input_lock
         .hash()
         .map_err(|e| anyhow::anyhow!("input lock hash failed: {e}"))?;
+
+    // ⛔ The note is what it is; this helper only assumed a shape. Refuse
+    // before signing if the assumption does not reproduce the note's own
+    // first-name — otherwise the mismatch surfaces at consensus as a silent
+    // refusal with no cause attached.
+    let derived_first = crate::lock::first_name_for_lock(&input_lock)?;
+    anyhow::ensure!(
+        &derived_first == input_first_name,
+        "input note's first-name does not derive from this key's          single-condition lock (wrong key, wrong coinbase flag, or a          multi-branch note this builder cannot spend)"
+    );
 
     let signature = sign_tx(signing_key, sig_hash)?;
 
@@ -249,6 +276,137 @@ pub fn build_witness(
         PkhSignature::new(vec![pkh_sig_entry]),
         vec![],
     ))
+}
+
+/// One party's contribution to a hold spend: a signing key.
+pub type HoldSigner = [nockchain_math::belt::Belt; 8];
+
+/// Build the witness that spends one branch of the buyer's hold
+/// (`crate::lock::hold_lock`, `XD-3`).
+///
+/// ⚑ *In plain terms: this assembles the paperwork for moving the buyer's
+/// parked money — which branch is being used, who signed, and (for a capture)
+/// the key that decrypts the answer.*
+///
+/// ⛔⛔ **EVERY REFUSAL BELOW IS ALSO A CONSENSUS REFUSAL — the difference is
+/// that this one names a cause.** A node acks an invalid transaction and
+/// discards it silently (`vesl-miner/examples/submit_settlement_devnet.rs`),
+/// so a witness that is wrong on any of these counts becomes a spend that
+/// simply never lands, with nothing to read. Checking here converts each into
+/// a message.
+///
+/// What is checked, and against what:
+///
+/// - **the signer count equals the branch's `m`.** `check:pkh` compares the
+///   witness map's size with `~(wyt z-by …)` for **equality**
+///   (`tx-engine-1.hoon:2069`), so one signature on a 2-of-2 is not a weaker
+///   two — it is a different count, and it fails. ⚑ The map is keyed by
+///   pubkey-hash, so a **repeated signer is one entry**, not two; that is
+///   checked here too, because it silently reduces a 2-of-2 to a 1-of-1.
+/// - **every signer is a member of the branch's set** (`:2071`).
+/// - **every `%hax` hash the branch names has a preimage present**
+///   (`:2112-2119` demands one for *every* member). ⛔ This is the delivery
+///   condition: a capture assembled without the key is refused here rather
+///   than vanishing at a node.
+///
+/// ⛔ Not checked, because this function cannot see it: that `sig_hash` is the
+/// digest of the spend you intend. It covers the seeds and the fee and nothing
+/// else (`tx-engine-1.hoon:1116-1120`), so a signature is branch-agnostic —
+/// the caller must compute it over the real output set.
+pub fn build_hold_witness(
+    lock: &nockchain_types::tx_engine::v1::tx::Lock,
+    branch: u64,
+    height: u64,
+    bythos_phase: u64,
+    signers: &[HoldSigner],
+    sig_hash: &nockchain_types::tx_engine::common::Hash,
+    hax: Vec<nockchain_types::tx_engine::v1::tx::HaxPreimage>,
+) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
+    use nockchain_types::tx_engine::v1::tx::{
+        LockPrimitive, PkhSignature, PkhSignatureEntry, Witness,
+    };
+
+    let lmp = crate::lock::lock_merkle_proof(lock, branch, height, bythos_phase)?;
+    let condition = lmp.spend_condition().clone();
+
+    // The `%pkh` conjunct, if the branch has one. `check:pkh` refuses two in
+    // one AND-list anyway (each would demand the whole map), so at most one.
+    let pkh_rule = condition.iter().find_map(|p| match p {
+        LockPrimitive::Pkh(pkh) => Some(pkh),
+        _ => None,
+    });
+
+    let entries = if let Some(rule) = pkh_rule {
+        let permitted: Vec<_> = rule.hashes.iter().cloned().collect();
+        anyhow::ensure!(
+            signers.len() as u64 == rule.m,
+            "branch {branch} is {}-of-{}: it needs exactly {} signature(s), got {}",
+            rule.m,
+            permitted.len(),
+            rule.m,
+            signers.len()
+        );
+        let mut entries: Vec<PkhSignatureEntry> = Vec::with_capacity(signers.len());
+        for sk in signers {
+            let pubkey = crate::signing::derive_pubkey(sk)
+                .map_err(|e| anyhow::anyhow!("pubkey derivation failed: {e}"))?;
+            let pkh = crate::signing::pubkey_hash(&pubkey)
+                .map_err(|e| anyhow::anyhow!("pubkey hash failed: {e}"))?;
+            anyhow::ensure!(
+                permitted.contains(&pkh),
+                "a signer is not named by branch {branch}'s %pkh set"
+            );
+            // ⛔ The witness half is a MAP keyed by pkh, so the same signer
+            // twice collapses to one entry and the count check upstream would
+            // pass while consensus sees a 1-of-1.
+            anyhow::ensure!(
+                !entries.iter().any(|e| e.pkh == pkh),
+                "the same signer was supplied twice; a repeated signer is ONE \
+                 entry in the witness map, not two"
+            );
+            entries.push(PkhSignatureEntry {
+                pkh,
+                pubkey,
+                signature: sign_tx(sk, sig_hash)?,
+            });
+        }
+        entries
+    } else {
+        anyhow::ensure!(
+            signers.is_empty(),
+            "branch {branch} carries no %pkh conjunct, so it takes no signatures"
+        );
+        Vec::new()
+    };
+
+    // The delivery condition. Fail closed on a missing preimage: this is the
+    // one refusal the whole row exists to make certain of.
+    for primitive in condition.iter() {
+        if let LockPrimitive::Hax(set) = primitive {
+            for wanted in set.0.iter() {
+                let entry = hax.iter().find(|e| &e.hash == wanted).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "branch {branch} requires a hashlock preimage that this \
+                         witness does not carry — a capture must publish the key"
+                    )
+                })?;
+                // ⛔ And it must be the RIGHT preimage. `check:hax` recomputes
+                // the digest structurally over the value (`:2112-2119`) and
+                // compares; a mislabelled entry is a spend that vanishes at a
+                // node with nothing to read.
+                let digest = nockchain_types::tx_engine::common::Hash::from_limbs(
+                    &entry.value.hashable_noun_digest(),
+                );
+                anyhow::ensure!(
+                    &digest == wanted,
+                    "the hashlock preimage does not hash to the value branch \
+                     {branch} names"
+                );
+            }
+        }
+    }
+
+    Ok(Witness::new(lmp, PkhSignature::new(entries), hax))
 }
 
 /// Submit a transaction to the chain and optionally wait for acceptance.
@@ -503,8 +661,196 @@ mod tests {
         sk[0] = Belt(42);
 
         let hash = Hash::from_limbs(&[9, 8, 7, 6, 5]);
-        let witness = build_witness(&sk, &hash, false, 1).unwrap();
+        let pubkey = crate::signing::derive_pubkey(&sk).unwrap();
+        let pkh = crate::signing::pubkey_hash(&pubkey).unwrap();
+        let first = crate::lock::first_name_for_lock(
+            &nockchain_types::tx_engine::v1::tx::Lock::SpendCondition(
+                nockchain_types::tx_engine::v1::tx::SpendCondition::simple_pkh(pkh),
+            ),
+        )
+        .unwrap();
+        let witness = build_witness(&sk, &hash, false, 1, &first).unwrap();
+
+        // ⛔ The guard, exercised: the same key against a note that is not
+        // its own must refuse, and say why.
+        let wrong = nockchain_types::tx_engine::common::Hash::from_limbs(&[9, 9, 9, 9, 9]);
+        let err = build_witness(&sk, &hash, false, 1, &wrong).unwrap_err();
+        assert!(err.to_string().contains("does not derive"), "{err}");
         // Witness was constructed without error
         let _ = witness;
+    }
+
+    // -----------------------------------------------------------------------
+    // The hold spend builder — every refusal exercised. A derived register is
+    // an untested arm.
+    // -----------------------------------------------------------------------
+
+    fn hold_fixture() -> (
+        nockchain_types::tx_engine::v1::tx::Lock,
+        [nockchain_math::belt::Belt; 8],
+        [nockchain_math::belt::Belt; 8],
+        nockchain_types::tx_engine::v1::tx::HaxPreimage,
+    ) {
+        use nockchain_math::owned_based_noun::OwnedBasedNoun;
+        use nockchain_types::tx_engine::common::Hash;
+        use nockchain_types::tx_engine::v1::tx::HaxPreimage;
+
+        let mk = |seed: u64| {
+            let mut sk = [nockchain_math::belt::Belt(0); 8];
+            sk[0] = nockchain_math::belt::Belt(seed);
+            sk
+        };
+        let (buyer_sk, platform_sk) = (mk(11), mk(23));
+        let pkh_of = |sk: &[nockchain_math::belt::Belt; 8]| {
+            crate::signing::pubkey_hash(&crate::signing::derive_pubkey(sk).unwrap()).unwrap()
+        };
+
+        // A minimal, self-consistent preimage: the lock names exactly the
+        // digest of the value the witness will carry.
+        let value = OwnedBasedNoun::Cell(
+            Box::new(OwnedBasedNoun::Atom(nockchain_math::belt::Belt(
+                0xdead_beef,
+            ))),
+            Box::new(OwnedBasedNoun::Atom(nockchain_math::belt::Belt(0x1234))),
+        );
+        let h_k = Hash::from_limbs(&value.hashable_noun_digest());
+        let preimage = HaxPreimage {
+            hash: h_k.clone(),
+            value,
+        };
+        let lock = crate::lock::hold_lock(pkh_of(&buyer_sk), pkh_of(&platform_sk), h_k, 4);
+        (lock, buyer_sk, platform_sk, preimage)
+    }
+
+    fn sh() -> nockchain_types::tx_engine::common::Hash {
+        nockchain_types::tx_engine::common::Hash::from_limbs(&[11, 22, 33, 44, 55])
+    }
+
+    #[test]
+    fn a_capture_witness_needs_both_signatures_and_the_key() {
+        let (lock, buyer, platform, preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+
+        // ✅ Both signatures and the key.
+        let w = build_hold_witness(
+            &lock,
+            b,
+            10,
+            1,
+            &[buyer, platform],
+            &sh(),
+            vec![preimage.clone()],
+        )
+        .expect("the honest capture must build");
+        assert_eq!(w.pkh_signature.0.len(), 2, "a 2-of-2 needs two entries");
+        assert_eq!(w.hax.len(), 1);
+
+        // ⛔ Without the key — the delivery condition, refused before it can
+        // vanish at a node.
+        let err = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must publish the key"), "{err}");
+
+        // ⛔ With the wrong key.
+        let mut wrong = preimage.clone();
+        wrong.hash = nockchain_types::tx_engine::common::Hash::from_limbs(&[1, 2, 3, 4, 5]);
+        let err = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![wrong])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must publish the key"), "{err}");
+
+        // ⛔ With a preimage whose value does not hash to what the lock names.
+        let mut mislabelled = preimage.clone();
+        mislabelled.value =
+            nockchain_math::owned_based_noun::OwnedBasedNoun::Atom(nockchain_math::belt::Belt(7));
+        let err = build_hold_witness(
+            &lock,
+            b,
+            10,
+            1,
+            &[buyer, platform],
+            &sh(),
+            vec![mislabelled],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("does not hash to"), "{err}");
+    }
+
+    #[test]
+    fn the_two_of_two_refuses_one_signature_and_a_repeated_signer() {
+        let (lock, buyer, platform, preimage) = hold_fixture();
+        for b in [crate::lock::HOLD_BRANCH_CAPTURE, crate::lock::HOLD_BRANCH_VOID] {
+            // ⛔ One signature is not a weaker two — `check:pkh` compares the
+            // map size for EQUALITY.
+            let err = build_hold_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![preimage.clone()])
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("2-of-2"), "{err}");
+
+            // ⛔⛔ The same signer twice. The witness half is a MAP keyed by
+            // pkh, so this is ONE entry at consensus — a silent downgrade of a
+            // 2-of-2 to a 1-of-1, which no test of the honest path can show.
+            let err = build_hold_witness(
+                &lock,
+                b,
+                10,
+                1,
+                &[buyer, buyer],
+                &sh(),
+                vec![preimage.clone()],
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(err.contains("supplied twice"), "{err}");
+            let _ = platform;
+        }
+    }
+
+    #[test]
+    fn a_stranger_cannot_sign_a_hold_branch() {
+        let (lock, buyer, _platform, preimage) = hold_fixture();
+        let mut stranger = [nockchain_math::belt::Belt(0); 8];
+        stranger[0] = nockchain_math::belt::Belt(99);
+        let err = build_hold_witness(
+            &lock,
+            crate::lock::HOLD_BRANCH_CAPTURE,
+            10,
+            1,
+            &[buyer, stranger],
+            &sh(),
+            vec![preimage],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not named by"), "{err}");
+    }
+
+    #[test]
+    fn the_reclaim_branch_takes_the_buyer_alone_and_no_key() {
+        let (lock, buyer, platform, _preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_RECLAIM;
+        let w = build_hold_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![])
+            .expect("the buyer's recovery must build");
+        assert_eq!(w.pkh_signature.0.len(), 1);
+        assert!(w.hax.is_empty(), "a reclaim publishes nothing");
+
+        // ⛔ It is 1-of-1 over the buyer, so the platform is not a member and
+        // two signatures are the wrong count.
+        assert!(build_hold_witness(&lock, b, 10, 1, &[platform], &sh(), vec![]).is_err());
+        assert!(build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![]).is_err());
+    }
+
+    /// The padding branch carries no `%pkh` at all, so it takes no signatures —
+    /// and it is unspendable at consensus regardless (`%brn` answers `%|`).
+    /// Building a witness for it must not look like authorization.
+    #[test]
+    fn the_padding_branch_takes_no_signatures() {
+        let (lock, buyer, _p, _k) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_PADDING;
+        assert!(build_hold_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![]).is_err());
+        let w = build_hold_witness(&lock, b, 10, 1, &[], &sh(), vec![]).expect("no signers");
+        assert!(w.pkh_signature.0.is_empty());
     }
 }
