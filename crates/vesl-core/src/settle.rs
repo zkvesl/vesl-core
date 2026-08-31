@@ -163,6 +163,14 @@ impl<V: CommitmentVerifier> Settle<V> {
 /// Constructs a single Seed with the given NoteData, lock, gift amount,
 /// and parent hash. The caller encodes domain-specific data into NoteData
 /// before calling this.
+///
+/// ⛔ **SINGLE-OUTPUT, AND IT HAS NO CALLERS.** · MEASURED 2026-08-30 across the
+/// fleet: every real transaction assembles `Seeds(vec![…])` itself, and nothing
+/// outside this module's own tests calls this. It also cannot express a spend
+/// that pays more than one party, which every settlement shape now needs. Use
+/// [`build_capture_seeds`], which takes a set, refuses a merged pair, and
+/// asserts conservation. Left in place rather than removed because deleting a
+/// public item is not this row's business.
 pub fn build_seeds(
     lock_root: nockchain_types::tx_engine::common::Hash,
     note_data: nockchain_types::tx_engine::v1::note::NoteData,
@@ -189,6 +197,120 @@ pub fn build_seeds(
         parent_hash,
     };
     Ok(nockchain_types::tx_engine::v1::tx::Seeds(vec![seed]))
+}
+
+/// One output of a capture: where it pays, what rides on it, and how much.
+///
+/// ⚑ *In plain terms: one line of the payout — an address, optional attached
+/// data, and an amount.*
+#[derive(Debug, Clone)]
+pub struct CaptureOutput {
+    /// The address this output pays to. ⛔ A lock ROOT, already derived by
+    /// whoever owns that shape — this module never restates a lock's operands
+    /// (`x402 XD-7`: the escrow's root has one home, `bounty_lock_for`, and
+    /// every consumer *calls* it).
+    pub lock_root: nockchain_types::tx_engine::common::Hash,
+    /// Note-data to attach. Empty for all but the escrow output, which carries
+    /// the job's intent entries.
+    pub note_data: nockchain_types::tx_engine::v1::note::NoteData,
+    /// The amount, in nicks.
+    pub amount: u64,
+}
+
+/// ⭐⭐ **BUILD A CAPTURE'S OUTPUT SET, AND ASSERT THAT IT CONSERVES — `F7`.**
+///
+/// ⚑ *In plain terms: assemble the payout lines of one transaction and refuse
+/// unless the money going out, plus the fee, is exactly the money coming in.*
+///
+/// ⛔⛔ **THE CHECK IS ON THE OUTPUTS, NOT ON THE ARITHMETIC THAT PRODUCED
+/// THEM.** A capture is authorized by signatures, and the signed digest covers
+/// **exactly the outputs and the fee** and nothing else
+/// (`sig-hash = Tip5[(sig-hashable:seeds) leaf+fee]`, `tx-engine-1.hoon:1116-1120`).
+/// So a conservation check upstream — over the split that was *meant* to be
+/// built — establishes nothing about what the parties will actually sign. This
+/// function is deliberately given no `cap`, no bill and no commission: it can
+/// only see the seeds, which is the only thing whose correctness transfers to
+/// the signature.
+///
+/// Three refusals, in the order a caller wants to hear them:
+///
+/// 1. **No zero-value output.** A zero seed is consensus-pointless and is
+///    almost always a sizing mistake; `vesl-labs`' escrow poster refuses one on
+///    the same grounds. ⚑ A capture whose commission rounds to zero drops that
+///    output *before* calling here — it does not pass a zero.
+/// 2. ⛔⛔ **NO TWO OUTPUTS UNDER ONE LOCK ROOT.** The chain keys a spend's
+///    outputs by seed lock-root and **MERGES seeds that share one**, so two
+///    outputs under one root are silently ONE output — money to an address
+///    nobody intended, with no error anywhere. `x402 XD-5`'s three outputs use
+///    three different keys so this holds, but it held *by luck* until asserted.
+/// 3. ⭐ **Conservation.** `Σ amount + fee == input_value`.
+///
+/// ⛔ What this does NOT check, because it cannot see it: that `input_value` is
+/// really what the input note holds. The caller reads that from the chain.
+pub fn build_capture_seeds(
+    outputs: &[CaptureOutput],
+    parent_hash: &nockchain_types::tx_engine::common::Hash,
+    input_value: u64,
+    fee: u64,
+) -> Result<nockchain_types::tx_engine::v1::tx::Seeds> {
+    use nockchain_types::tx_engine::v1::tx::{Seed, Seeds};
+
+    anyhow::ensure!(
+        !outputs.is_empty(),
+        "a capture with no outputs would burn the whole hold"
+    );
+
+    let mut total: u128 = 0;
+    for (i, out) in outputs.iter().enumerate() {
+        anyhow::ensure!(
+            out.amount != 0,
+            "capture output {i} would carry zero assets; drop the output rather \
+             than emitting a zero-value seed"
+        );
+        for (j, other) in outputs.iter().enumerate().take(i) {
+            anyhow::ensure!(
+                out.lock_root != other.lock_root,
+                "capture outputs {j} and {i} share a lock root, and the chain MERGES \
+                 seeds that do — this spend would land as one output, not two"
+            );
+        }
+        total += u128::from(out.amount);
+    }
+
+    // ⭐ `F7`. u128 so an output set that overflows a u64 is reported as
+    // non-conserving rather than wrapping into agreement with the input.
+    let paid_out = total + u128::from(fee);
+    anyhow::ensure!(
+        paid_out == u128::from(input_value),
+        "this capture does not conserve: {} nicks of outputs plus a {fee}-nick fee is {paid_out}, \
+         against an input holding {input_value}",
+        total
+    );
+
+    let gift_of = |amount: u64| -> Result<nockchain_types::tx_engine::common::Nicks> {
+        // u64 -> usize is lossless on 64-bit and truncates on a 32-bit target;
+        // convert explicitly so an overflow surfaces here, not as a silently
+        // wrong gift amount. (`build_seeds`' AUDIT M-22, same hazard.)
+        Ok(nockchain_types::tx_engine::common::Nicks(
+            usize::try_from(amount)
+                .map_err(|_| anyhow::anyhow!("output amount {amount} exceeds usize"))?,
+        ))
+    };
+
+    Ok(Seeds(
+        outputs
+            .iter()
+            .map(|out| {
+                Ok(Seed {
+                    output_source: None,
+                    lock_root: out.lock_root.clone(),
+                    note_data: out.note_data.clone(),
+                    gift: gift_of(out.amount)?,
+                    parent_hash: parent_hash.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+    ))
 }
 
 /// Sign a sig-hash with a secret key.
@@ -281,12 +403,56 @@ pub fn build_witness(
 /// One party's contribution to a hold spend: a signing key.
 pub type HoldSigner = [nockchain_math::belt::Belt; 8];
 
+/// One party's **finished** contribution to a hold spend: the public key it
+/// signed under, and its signature over the spend's sig-hash.
+///
+/// ⚑ *In plain terms: what a co-signer sends back. Not its key — the signature
+/// it made with it.*
+///
+/// ⛔⛔ **THIS TYPE IS WHY THE CAPTURE IS BUILDABLE AT ALL.** The hold's capture
+/// and void branches are 2-of-2 between the buyer and the platform, and the
+/// buyer will never hand the platform a secret key. [`build_hold_witness`]
+/// takes `&[HoldSigner]` — keys — so it can only ever assemble a spend by a
+/// party that holds *both*, which is a test fixture and not the design
+/// (`x402 XD-6`: *an unchecking co-signature is a 1-of-1 with extra steps*, and
+/// a co-signature the platform could forge is not one at all).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoldCosignature {
+    /// The public key this signature is checked under. ⛔ Carried rather than
+    /// derived, because the verifier has no key to derive it from.
+    pub pubkey: nockchain_types::tx_engine::common::SchnorrPubkey,
+    /// The signature over the spend's sig-hash.
+    pub signature: nockchain_types::tx_engine::common::SchnorrSignature,
+}
+
+/// Produce one party's co-signature over a spend's sig-hash.
+///
+/// ⚑ *In plain terms: this is the whole of what a co-signer does — it is handed
+/// the digest of the exact transaction it is agreeing to, and it signs that.*
+///
+/// ⛔ It signs a digest and nothing else. The digest covers the outputs and the
+/// fee and **nothing else** (`tx-engine-1.hoon:1116-1120`), so a signature is
+/// branch-agnostic and this function cannot tell an honest spend from a hostile
+/// one. **Whatever decides to sign must check the output set first** — that is
+/// the co-signer's own job (`x402 XD-6`, board row 5b) and it is not here.
+pub fn hold_cosign(
+    sk: &HoldSigner,
+    sig_hash: &nockchain_types::tx_engine::common::Hash,
+) -> Result<HoldCosignature> {
+    Ok(HoldCosignature {
+        pubkey: crate::signing::derive_pubkey(sk)
+            .map_err(|e| anyhow::anyhow!("pubkey derivation failed: {e}"))?,
+        signature: sign_tx(sk, sig_hash)?,
+    })
+}
+
 /// Build the witness that spends one branch of the buyer's hold
-/// (`crate::lock::hold_lock`, `XD-3`).
+/// (`crate::lock::hold_lock`, `XD-3`), from **finished signatures**.
 ///
 /// ⚑ *In plain terms: this assembles the paperwork for moving the buyer's
 /// parked money — which branch is being used, who signed, and (for a capture)
-/// the key that decrypts the answer.*
+/// the key that decrypts the answer — out of signatures the parties made
+/// separately, without either handing over its key.*
 ///
 /// ⛔⛔ **EVERY REFUSAL BELOW IS ALSO A CONSENSUS REFUSAL — the difference is
 /// that this one names a cause.** A node acks an invalid transaction and
@@ -304,6 +470,13 @@ pub type HoldSigner = [nockchain_math::belt::Belt; 8];
 ///   pubkey-hash, so a **repeated signer is one entry**, not two; that is
 ///   checked here too, because it silently reduces a 2-of-2 to a 1-of-1.
 /// - **every signer is a member of the branch's set** (`:2071`).
+/// - ⭐ **every signature actually verifies against `sig_hash`.** This is the
+///   check the key-taking wrapper never needed and the co-signature path cannot
+///   do without: a counterparty's signature is a value that arrived over a
+///   wire, and a bad one is otherwise a spend that vanishes at a node with
+///   nothing to read. `verify_chain_signature` is `check:pkh`'s own per-entry
+///   predicate. ⚑ On the wrapper's path it is a self-check that cannot fail;
+///   it stays uniform because this function cannot see which parts are foreign.
 /// - **every `%hax` hash the branch names has a preimage present**
 ///   (`:2112-2119` demands one for *every* member). ⛔ This is the delivery
 ///   condition: a capture assembled without the key is refused here rather
@@ -313,12 +486,12 @@ pub type HoldSigner = [nockchain_math::belt::Belt; 8];
 /// digest of the spend you intend. It covers the seeds and the fee and nothing
 /// else (`tx-engine-1.hoon:1116-1120`), so a signature is branch-agnostic —
 /// the caller must compute it over the real output set.
-pub fn build_hold_witness(
+pub fn build_hold_witness_from_parts(
     lock: &nockchain_types::tx_engine::v1::tx::Lock,
     branch: u64,
     height: u64,
     bythos_phase: u64,
-    signers: &[HoldSigner],
+    parts: &[HoldCosignature],
     sig_hash: &nockchain_types::tx_engine::common::Hash,
     hax: Vec<nockchain_types::tx_engine::v1::tx::HaxPreimage>,
 ) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
@@ -339,18 +512,17 @@ pub fn build_hold_witness(
     let entries = if let Some(rule) = pkh_rule {
         let permitted: Vec<_> = rule.hashes.iter().cloned().collect();
         anyhow::ensure!(
-            signers.len() as u64 == rule.m,
+            parts.len() as u64 == rule.m,
             "branch {branch} is {}-of-{}: it needs exactly {} signature(s), got {}",
             rule.m,
             permitted.len(),
             rule.m,
-            signers.len()
+            parts.len()
         );
-        let mut entries: Vec<PkhSignatureEntry> = Vec::with_capacity(signers.len());
-        for sk in signers {
-            let pubkey = crate::signing::derive_pubkey(sk)
-                .map_err(|e| anyhow::anyhow!("pubkey derivation failed: {e}"))?;
-            let pkh = crate::signing::pubkey_hash(&pubkey)
+        let msg = sig_hash.to_array().map(nockchain_math::belt::Belt);
+        let mut entries: Vec<PkhSignatureEntry> = Vec::with_capacity(parts.len());
+        for part in parts {
+            let pkh = crate::signing::pubkey_hash(&part.pubkey)
                 .map_err(|e| anyhow::anyhow!("pubkey hash failed: {e}"))?;
             anyhow::ensure!(
                 permitted.contains(&pkh),
@@ -364,16 +536,24 @@ pub fn build_hold_witness(
                 "the same signer was supplied twice; a repeated signer is ONE \
                  entry in the witness map, not two"
             );
+            // ⭐ The signature must be over THIS spend's digest. A co-signature
+            // that covers a different output set is a spend consensus refuses
+            // by saying nothing at all.
+            anyhow::ensure!(
+                crate::signing::verify_chain_signature(&part.pubkey, &msg, &part.signature),
+                "a co-signature does not verify against this spend's sig-hash — it was \
+                 made over a different output set, or under a different key"
+            );
             entries.push(PkhSignatureEntry {
                 pkh,
-                pubkey,
-                signature: sign_tx(sk, sig_hash)?,
+                pubkey: part.pubkey.clone(),
+                signature: part.signature.clone(),
             });
         }
         entries
     } else {
         anyhow::ensure!(
-            signers.is_empty(),
+            parts.is_empty(),
             "branch {branch} carries no %pkh conjunct, so it takes no signatures"
         );
         Vec::new()
@@ -422,6 +602,35 @@ pub fn build_hold_witness(
     }
 
     Ok(Witness::new(lmp, PkhSignature::new(entries), hax))
+}
+
+/// Build a hold-spend witness from signing **keys** — the single-party
+/// convenience over [`build_hold_witness_from_parts`].
+///
+/// ⚑ *In plain terms: the same thing, for when one process happens to hold
+/// every key involved. That is a test fixture and a demonstration tool, not the
+/// production shape.*
+///
+/// ⛔ **A 2-of-2 assembled here is not a co-signature.** Both keys are in one
+/// place, so nothing about the buyer's independent agreement is established.
+/// Production builds the buyer's half with [`hold_cosign`] on the buyer's own
+/// machine and assembles with [`build_hold_witness_from_parts`]; this wrapper
+/// exists so the devnet tools and the unit fixtures keep working unchanged, and
+/// so every check has exactly one home.
+pub fn build_hold_witness(
+    lock: &nockchain_types::tx_engine::v1::tx::Lock,
+    branch: u64,
+    height: u64,
+    bythos_phase: u64,
+    signers: &[HoldSigner],
+    sig_hash: &nockchain_types::tx_engine::common::Hash,
+    hax: Vec<nockchain_types::tx_engine::v1::tx::HaxPreimage>,
+) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
+    let parts = signers
+        .iter()
+        .map(|sk| hold_cosign(sk, sig_hash))
+        .collect::<Result<Vec<_>>>()?;
+    build_hold_witness_from_parts(lock, branch, height, bythos_phase, &parts, sig_hash, hax)
 }
 
 /// Submit a transaction to the chain and optionally wait for acceptance.
@@ -904,5 +1113,210 @@ mod tests {
             why.to_string().contains("must publish the key"),
             "the refusal must name the capture's key, got: {why}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // ⭐ THE CAPTURE'S OUTPUT SET — x402 board row 5, and `F7` lives here.
+    // -----------------------------------------------------------------------
+
+    fn root(n: u64) -> nockchain_types::tx_engine::common::Hash {
+        nockchain_types::tx_engine::common::Hash::from_limbs(&[n, n, n, n, n])
+    }
+
+    fn out(n: u64, amount: u64) -> CaptureOutput {
+        CaptureOutput {
+            lock_root: root(n),
+            note_data: nockchain_types::tx_engine::v1::note::NoteData::new(Vec::new()),
+            amount,
+        }
+    }
+
+    /// The honest `XD-5` shape: escrow + commission + the buyer's change, plus
+    /// the fee, adding back up to what the hold held.
+    #[test]
+    fn a_conserving_three_output_capture_builds() {
+        // cap 1_000_000, bill 100_000, φ = 5,5 % ⇒ 94_500 / 5_500 / 899_750, fee 250
+        let outs = [out(1, 94_500), out(2, 5_500), out(3, 899_750)];
+        let seeds = build_capture_seeds(&outs, &root(9), 1_000_000, 250).expect("conserves");
+        assert_eq!(seeds.0.len(), 3);
+        let gifts: u64 = seeds.0.iter().map(|s| s.gift.0 as u64).sum();
+        assert_eq!(gifts + 250, 1_000_000);
+        assert!(seeds.0.iter().all(|s| s.parent_hash == root(9)));
+    }
+
+    /// ⭐⭐ **`F7` — a capture that does not conserve is REFUSED, in both
+    /// directions.** Over-paying invents money the hold does not hold;
+    /// under-paying strands the difference where nobody can reach it. Neither is
+    /// a rounding question, and neither may reach a signature.
+    #[test]
+    fn a_capture_that_does_not_conserve_is_refused() {
+        // One nick too much.
+        let over = [out(1, 94_501), out(2, 5_500), out(3, 899_750)];
+        let err = build_capture_seeds(&over, &root(9), 1_000_000, 250)
+            .expect_err("one nick over must not build");
+        assert!(err.to_string().contains("does not conserve"), "{err}");
+
+        // One nick too little.
+        let under = [out(1, 94_499), out(2, 5_500), out(3, 899_750)];
+        let err = build_capture_seeds(&under, &root(9), 1_000_000, 250)
+            .expect_err("one nick under must not build");
+        assert!(err.to_string().contains("does not conserve"), "{err}");
+
+        // ⛔ And it is the FEE that is part of the identity, not decoration: the
+        // same outputs against a different fee do not conserve either.
+        let honest = [out(1, 94_500), out(2, 5_500), out(3, 899_750)];
+        assert!(build_capture_seeds(&honest, &root(9), 1_000_000, 249).is_err());
+        assert!(build_capture_seeds(&honest, &root(9), 1_000_000, 250).is_ok());
+    }
+
+    /// ⛔⛔ Two outputs under one lock root are ONE output on chain. Without this
+    /// the spend still conserves arithmetically and still signs — it simply pays
+    /// somebody the wrong amount, with nothing anywhere reporting it.
+    #[test]
+    fn two_outputs_sharing_a_lock_root_are_refused() {
+        let outs = [out(1, 94_500), out(1, 5_500), out(3, 899_750)];
+        let err = build_capture_seeds(&outs, &root(9), 1_000_000, 250)
+            .expect_err("a merged pair must not build");
+        assert!(err.to_string().contains("share a lock root"), "{err}");
+    }
+
+    /// A zero output is dropped by the caller, never emitted — the commission
+    /// rounds away on a small bill and the capture is then two outputs.
+    #[test]
+    fn a_zero_value_output_is_refused_and_the_two_output_shape_builds() {
+        let with_zero = [out(1, 94_500), out(2, 0), out(3, 905_250)];
+        let err = build_capture_seeds(&with_zero, &root(9), 1_000_000, 250)
+            .expect_err("a zero seed must not build");
+        assert!(err.to_string().contains("zero assets"), "{err}");
+
+        // The shape the caller actually emits when φ rounds to nothing.
+        let two = [out(1, 18), out(3, 972)];
+        let seeds = build_capture_seeds(&two, &root(9), 1_000, 10).expect("two outputs conserve");
+        assert_eq!(seeds.0.len(), 2);
+    }
+
+    #[test]
+    fn a_capture_with_no_outputs_is_refused() {
+        let err = build_capture_seeds(&[], &root(9), 1_000, 10).expect_err("must not build");
+        assert!(err.to_string().contains("burn the whole hold"), "{err}");
+    }
+
+    /// The note-data rides on exactly the output it was given to — the escrow's
+    /// intent entries must not land on the buyer's change.
+    #[test]
+    fn note_data_stays_on_the_output_it_was_given_to() {
+        use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
+        let entry = NoteDataEntry::new(
+            "vint-v".to_string(),
+            nockchain_math::owned_based_noun::OwnedBasedNoun::try_atom(42).unwrap(),
+        );
+        let mut escrow = out(1, 94_500);
+        escrow.note_data = NoteData::new(vec![entry]);
+        let outs = [escrow, out(2, 5_500), out(3, 899_750)];
+        let seeds = build_capture_seeds(&outs, &root(9), 1_000_000, 250).expect("conserves");
+        assert!(!seeds.0[0].note_data.is_empty());
+        assert!(seeds.0[1].note_data.is_empty());
+        assert!(seeds.0[2].note_data.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // ⭐ THE CO-SIGNATURE PATH — the buyer never hands over a key.
+    // -----------------------------------------------------------------------
+
+    /// ⭐⭐ **ONE HOME.** Assembling from separately-made signatures must produce
+    /// exactly the witness the key-taking wrapper produces, or the two paths
+    /// have drifted and only one of them is the one consensus was pinned
+    /// against.
+    #[test]
+    fn assembling_from_cosignatures_equals_assembling_from_keys() {
+        let (lock, buyer, platform, preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+
+        let from_keys = build_hold_witness(
+            &lock,
+            b,
+            10,
+            1,
+            &[buyer, platform],
+            &sh(),
+            vec![preimage.clone()],
+        )
+        .expect("keys");
+
+        // What production does: each party signs on its own machine and sends
+        // back only a public key and a signature.
+        let parts = [
+            hold_cosign(&buyer, &sh()).expect("buyer signs"),
+            hold_cosign(&platform, &sh()).expect("platform signs"),
+        ];
+        let from_parts =
+            build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
+                .expect("cosignatures");
+
+        assert_eq!(from_keys, from_parts);
+    }
+
+    /// ⭐ **A CO-SIGNATURE OVER A DIFFERENT OUTPUT SET IS REFUSED, BY NAME.**
+    /// This is the check the key-taking path never needed: a counterparty's
+    /// signature arrives over a wire, and consensus's answer to a bad one is
+    /// silence.
+    #[test]
+    fn a_cosignature_over_a_different_spend_is_refused() {
+        let (lock, buyer, platform, preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let other = nockchain_types::tx_engine::common::Hash::from_limbs(&[99, 88, 77, 66, 55]);
+        assert_ne!(other, sh());
+
+        // The buyer signed a different transaction than the one being assembled.
+        let parts = [
+            hold_cosign(&buyer, &other).expect("buyer signs the wrong spend"),
+            hold_cosign(&platform, &sh()).expect("platform signs"),
+        ];
+        let err =
+            build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage.clone()])
+                .expect_err("a signature over another output set must not assemble");
+        assert!(err.to_string().contains("does not verify"), "{err}");
+
+        // ⭐ THE CONTROL — the same two parties over the RIGHT digest assemble.
+        let good = [
+            hold_cosign(&buyer, &sh()).expect("buyer signs"),
+            hold_cosign(&platform, &sh()).expect("platform signs"),
+        ];
+        build_hold_witness_from_parts(&lock, b, 10, 1, &good, &sh(), vec![preimage])
+            .expect("the honest pair assembles");
+    }
+
+    /// A co-signature from a key the branch does not name is refused before the
+    /// signature is even checked — a stranger's valid signature is still a
+    /// stranger's.
+    #[test]
+    fn a_cosignature_from_an_unnamed_key_is_refused() {
+        let (lock, buyer, _platform, preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let mut stranger = [nockchain_math::belt::Belt(0); 8];
+        stranger[0] = nockchain_math::belt::Belt(4_242);
+
+        let parts = [
+            hold_cosign(&buyer, &sh()).expect("buyer signs"),
+            hold_cosign(&stranger, &sh()).expect("stranger signs"),
+        ];
+        let err = build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
+            .expect_err("a stranger must not co-sign");
+        assert!(err.to_string().contains("not named by branch"), "{err}");
+    }
+
+    /// The delivery condition still binds on the co-signature path: a capture
+    /// assembled without the key is refused here rather than vanishing at a node.
+    #[test]
+    fn a_keyless_capture_is_refused_on_the_cosignature_path_too() {
+        let (lock, buyer, platform, _preimage) = hold_fixture();
+        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let parts = [
+            hold_cosign(&buyer, &sh()).expect("buyer signs"),
+            hold_cosign(&platform, &sh()).expect("platform signs"),
+        ];
+        let err = build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![])
+            .expect_err("a capture must publish the key");
+        assert!(err.to_string().contains("must publish the key"), "{err}");
     }
 }
