@@ -265,6 +265,44 @@ pub fn pubkey_from_base58(b58: &str) -> Result<SchnorrPubkey, SigningError> {
     Ok(SchnorrPubkey(vesl_point_to_nock(&point)))
 }
 
+/// The base58 form of a chain public key — the inverse of
+/// [`pubkey_from_base58`].
+///
+/// ⚑ *In plain terms: the way a public key is written down when it travels
+/// between programs.*
+///
+/// ⛔⛔ **THIS CODEC HAD ONLY ONE DIRECTION UNTIL x402 BOARD ROW 5.** Everything
+/// that reached a chain key came off a wire and was decoded; nothing had to
+/// PRODUCE the wire form, because the party that signs and the party that
+/// encodes were the same process. A co-signature crosses a network, so both
+/// halves now exist — and they exist HERE, beside their inverses, rather than as
+/// an ad-hoc encoder wherever the need first appeared.
+pub fn pubkey_to_base58(pk: &SchnorrPubkey) -> Result<String, SigningError> {
+    nock_point_to_vesl(&pk.0)
+        .into_base58()
+        .map_err(|e| SigningError::HashFailed(format!("pubkey base58 encode: {e}")))
+}
+
+/// The wire form of a chain signature — the inverse of
+/// [`wire_signature_to_chain`].
+///
+/// ⛔ The limbs are DECIMAL STRINGS, matching what the decoder parses. A second
+/// spelling here would be a signature this tree can produce and cannot read.
+pub fn chain_signature_to_wire(
+    pk: &SchnorrPubkey,
+    sig: &SchnorrSignature,
+) -> Result<SchnorrSignatureJson, SigningError> {
+    let fmt8 =
+        |limbs: &[Belt; 8]| -> [String; 8] { std::array::from_fn(|i| limbs[i].0.to_string()) };
+    Ok(SchnorrSignatureJson {
+        pubkey: pubkey_to_base58(pk)?,
+        schnorr: vesl_signing::schnorr::SchnorrPair {
+            chal: fmt8(&sig.chal),
+            sig: fmt8(&sig.sig),
+        },
+    })
+}
+
 pub fn wire_signature_to_chain(
     json: &SchnorrSignatureJson,
 ) -> Result<(SchnorrPubkey, SchnorrSignature), SigningError> {
@@ -420,6 +458,45 @@ pub(crate) fn ubig_to_belts8(val: &UBig) -> [Belt; 8] {
 
 #[cfg(test)]
 mod tests {
+
+    /// ⭐ **THE CODEC ROUND-TRIPS, IN BOTH DIRECTIONS.**
+    ///
+    /// ⚑ *In plain terms: a key and a signature written down for the network and
+    /// read back again must be the same key and the same signature.*
+    ///
+    /// ⛔ Until x402 board row 5 only the DECODING half existed, so nothing could
+    /// have caught an encoder that disagreed with it. A co-signature crosses a
+    /// network, and consensus's answer to a signature that decodes to something
+    /// else is silence.
+    #[test]
+    fn the_chain_wire_codec_round_trips() {
+        let mut sk = [Belt(0); 8];
+        sk[0] = Belt(12345);
+        sk[1] = Belt(67890);
+        let pk = derive_pubkey(&sk).expect("pubkey");
+        let msg = [Belt(1), Belt(2), Belt(3), Belt(4), Belt(5)];
+        let sig = sign(&sk, &msg).expect("sign");
+
+        let wire = chain_signature_to_wire(&pk, &sig).expect("encode");
+        let (pk2, sig2) = wire_signature_to_chain(&wire).expect("decode");
+        assert_eq!(
+            pk2.0.x.0, pk.0.x.0,
+            "the public key survived the round trip"
+        );
+        assert_eq!(pk2.0.y.0, pk.0.y.0);
+        assert_eq!(sig2.chal, sig.chal, "the signature survived the round trip");
+        assert_eq!(sig2.sig, sig.sig);
+        // ...and the decoded pair still verifies, which is what actually matters.
+        assert!(verify_chain_signature(&pk2, &msg, &sig2));
+        assert_eq!(
+            pubkey_from_base58(&pubkey_to_base58(&pk).expect("encode pk"))
+                .expect("decode pk")
+                .0
+                .x
+                .0,
+            pk.0.x.0
+        );
+    }
     use nockchain_math::crypto::cheetah::{
         A_GEN, F6_ZERO, ch_add, ch_neg, ch_scal_big, trunc_g_order,
     };
