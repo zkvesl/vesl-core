@@ -94,11 +94,44 @@ pub const HOLD_BRANCH_PADDING: u64 = 4;
 /// buyer recovers its money alone after a wait.*
 ///
 /// ```text
-/// B1  CAPTURE  [%pkh m=2 {buyer, platform}]  AND  [%hax {h_k}]
-/// B2  VOID     [%pkh m=2 {buyer, platform}]
-/// B3  RECLAIM  [%pkh m=1 {buyer}]  AND  [%tim rel.min = r_reclaim]
+/// B1  CAPTURE  [%pkh m=2 {buyer_pay,  platform}]  AND  [%hax {h_k}]
+/// B2  VOID     [%pkh m=2 {buyer_VOID, platform}]
+/// B3  RECLAIM  [%pkh m=1 {buyer_pay}] AND [%tim rel.min = r_reclaim] AND [%hax {h_sb}]
 /// B4  padding  [%brn ~]  AND  [%hax {job_com}]
 /// ```
+///
+/// ## ⛔⛔ WHY `B2` NAMES A DIFFERENT KEY — the defect this shape closes
+///
+/// ⚑ *In plain terms: the signature the buyer gives us to be paid could also be
+/// used to cancel the payment — and cancelling hands over no key. We would be
+/// paid without delivering. The cancel branch therefore needs its own key,
+/// which the buyer uses once and can then throw away.*
+///
+/// `sig-hash` covers the seeds and the fee and **NOT the revealed branch**
+/// (`tx-engine-1.hoon:1116-1120`), and a spend reveals **one** branch chosen by
+/// whoever submits it. While `B1` and `B2` named the same pair, a capture
+/// co-signature was byte-for-byte the signature a void of the same outputs
+/// asks for ⇒ the platform could reveal `B2`, add its own signature, carry no
+/// preimage, and **publish no delivery key**. · MEASURED 2026-09-03: a live
+/// node ACCEPTED exactly that spend, twice
+/// (`rust_signed_devnet.rs` `L5`; x402 `records/S118`).
+///
+/// ⛔ It is **not** a theft of funds — the outputs are pinned by the sig-hash.
+/// What it broke is **atomicity**, which is the whole point of `B1`'s hashlock.
+///
+/// ⚖️ RULED 2026-08-31 (`PLAN_B §D2.2`): `B2` names a dedicated, discardable
+/// `buyer_void_pkh`. The buyer pre-signs one void spend at hold confirmation and
+/// **may discard the key immediately** — retention is ZERO, which is why the
+/// objection that killed this mechanism for `B3` (a key that must survive 24 h)
+/// does not transfer. `check:pkh`'s subset test (`:2071`) now refuses the
+/// capture co-signature on `B2` **before outputs are considered**.
+///
+/// ⚑ Conjuncts are a list, so this costs **zero extra branches**: the arity
+/// stays four and [`Lock::V4`] is unchanged.
+///
+/// ⛔ `h_sb` closes the same hole on `B3`, which the buyer could otherwise
+/// reach with its ordinary payment key after `r_reclaim`. Like `h_k` it is the
+/// digest of the **carry noun**, never a hash of the secret's bytes.
 ///
 /// ⛔⛔ **Capture and void MUST be separate branches.** A void pays the buyer
 /// and delivers nothing, so it must not require publishing the key. They
@@ -155,21 +188,42 @@ pub const HOLD_BRANCH_PADDING: u64 = 4;
 /// ⚑ Nothing about it reaches the chain in the clear: a spend reveals only the
 /// branch it uses, and this branch is never spent.
 ///
-/// ## ⛔⛔ Why this returns a `Result`
+/// ## ⛔⛔ Why this returns a `Result` — THREE ways to build a broken hold
 ///
-/// `Pkh::new(2, vec![P, P])` goes through `ZSet`, which **deduplicates
-/// silently** (`nockchain-math/src/zoon/zset.rs`, pinned upstream by
-/// `quickcheck_owned_zset_ignores_duplicate_items`). Two equal hashes become a
-/// ONE-element set still demanding `m=2`, and `check:pkh` requires exactly `m`
-/// witness entries whose keys are a subset of that set
-/// (`tx-engine-1.hoon:2064-2081`) ⇒ **`B1` and `B2` both become unsatisfiable**,
-/// leaving only the buyer's own reclaim. The note is built without complaint and
-/// says nothing until a live settlement. ⇒ refuse it here, the one place that
-/// can see both halves.
+/// **(1) A collapsed 2-of-2.** `Pkh::new(2, vec![P, P])` goes through `ZSet`,
+/// which **deduplicates silently** (`nockchain-math/src/zoon/zset.rs`, pinned
+/// upstream by `quickcheck_owned_zset_ignores_duplicate_items`). Two equal
+/// hashes become a ONE-element set still demanding `m=2`, and `check:pkh`
+/// requires exactly `m` witness entries whose keys are a subset of that set
+/// (`tx-engine-1.hoon:2064-2081`) ⇒ that branch becomes **unsatisfiable**. The
+/// note is built without complaint and says nothing until a live settlement.
+/// This is why `buyer_pkh == platform_pkh` and `buyer_void_pkh ==
+/// platform_pkh` are both refused.
+///
+/// **(2) ⛔⛔ `buyer_void_pkh == buyer_pkh` — THE ONE THAT PASSES EVERY TEST.**
+/// It builds cleanly, is fully satisfiable, produces a four-branch lock whose
+/// `m` values and conjunct counts are all correct — and **silently restores the
+/// defect above**, because the shape assertions check `m` and counts and never
+/// *whose* keys. **A wrong hash is inert; a wrong key is live.**
+///
+/// **(3) A zero threshold.** · VERIFIED against the chain's own source:
+/// `Pkh(m = 0, …)` **passes every clause of `check:pkh` with an EMPTY witness**
+/// — `:2069` gives `0 == 0` (`wyt` on an empty `z-by` is `0`, `zoon.hoon:299`);
+/// `:2071` gives `∅ \ h = ∅`, which **never inspects the permitted set at all**;
+/// `~(rep z-by ~)` returns its bunted accumulator, and the bunt of `?` is `%.y`
+/// (`zoon.hoon:220`); and `batch-verify` is `(levy batch verify)`
+/// (`ztd/three.hoon:1833-1837`), which is `%.y` on `~`. The Rust mirror agrees
+/// — `check_pkh`'s `distinct.len() as u64 != pkh.m` is the same equality.
+/// ⇒ **a zero-threshold branch is spendable by anyone, with no signature at
+/// all.** Nothing rejected it before; it was unreachable only because every
+/// call site passed a literal. [`pkh_conjunct`] now refuses it at the
+/// constructor, so no future branch can reintroduce it.
 pub fn hold_lock(
     buyer_pkh: Hash,
+    buyer_void_pkh: Hash,
     platform_pkh: Hash,
     h_k: Hash,
+    h_sb: Hash,
     r_reclaim: u64,
     job_com: Hash,
 ) -> anyhow::Result<Lock> {
@@ -181,20 +235,47 @@ pub fn hold_lock(
              Refusing to build a note nobody can capture."
         );
     }
-    let both = || LockPrimitive::Pkh(Pkh::new(2, vec![buyer_pkh.clone(), platform_pkh.clone()]));
-
+    if buyer_void_pkh == platform_pkh {
+        anyhow::bail!(
+            "the buyer's VOID key and the platform hash to the same address, so B2's \
+             2-of-2 would collapse to a one-element set still demanding two signatures \
+             and the void would be unsatisfiable — leaving a hold that can be captured \
+             but never cancelled. Refusing to build it."
+        );
+    }
+    // ⛔⛔ THE ONE THAT IS INVISIBLE TO EVERY SHAPE TEST. With one key on both
+    // branches, a capture co-signature satisfies the void — which is the whole
+    // defect this lock shape exists to close, restored silently. A wrong hash
+    // is inert; a wrong KEY is live.
+    if buyer_void_pkh == buyer_pkh {
+        anyhow::bail!(
+            "the buyer's VOID key is its PAYMENT key. B2 would then name the same pair \
+             as B1, so the capture co-signature the buyer hands over could be replayed \
+             onto the void branch — taking the money while publishing no delivery key. \
+             That is the defect the dedicated void key exists to close, and this lock \
+             would pass every shape assertion while reopening it. Refusing to build it."
+        );
+    }
     // B1 — capture. Conjunct order is part of the address; `XD-3` writes the
     // signature check first.
-    let capture = SpendCondition::new(vec![both(), LockPrimitive::Hax(Hax::new(vec![h_k]))]);
-    // B2 — void. The same 2-of-2, with nothing to publish.
-    let void = SpendCondition::new(vec![both()]);
-    // B3 — reclaim. The buyer alone, after the wait.
+    let capture = SpendCondition::new(vec![
+        pkh_conjunct(2, vec![buyer_pkh.clone(), platform_pkh.clone()])?,
+        LockPrimitive::Hax(Hax::new(vec![h_k])),
+    ]);
+    // B2 — void. A 2-of-2 with the buyer's DEDICATED key, and nothing to
+    // publish. It is the different key, not the missing hashlock, that stops a
+    // capture co-signature from spending here.
+    let void = SpendCondition::new(vec![pkh_conjunct(2, vec![buyer_void_pkh, platform_pkh])?]);
+    // B3 — reclaim. The buyer alone, after the wait, publishing its own
+    // per-job secret. Without `h_sb` the buyer's ordinary payment signature
+    // reaches this branch too (`PLAN_B §D`, route 2).
     let reclaim = SpendCondition::new(vec![
-        LockPrimitive::Pkh(Pkh::new(1, vec![buyer_pkh])),
+        pkh_conjunct(1, vec![buyer_pkh])?,
         LockPrimitive::Tim(LockTim {
             rel: TimelockRangeRelative::new(Some(BlockHeightDelta(Belt(r_reclaim))), None),
             abs: TimelockRangeAbsolute::none(),
         }),
+        LockPrimitive::Hax(Hax::new(vec![h_sb])),
     ]);
     // B4 — the padding the chain's own `from-list` would have appended, now
     // also carrying the job. ⛔ `Burn` stays FIRST: conjunct order is part of
@@ -214,6 +295,58 @@ pub fn hold_lock(
             q: padding,
         },
     }))
+}
+
+/// A `%pkh` conjunct that cannot be built in either shape the chain accepts
+/// but nobody can use.
+///
+/// ⚑ *In plain terms: "needs N of these signatures" has two ways of being
+/// nonsense — asking for none, and asking for more than were supplied. The
+/// chain accepts both and they behave very differently from what they read
+/// like, so they are refused here instead.*
+///
+/// ⛔⛔ **`m = 0` IS SATISFIED BY AN EMPTY WITNESS — a branch anyone can
+/// spend, with no signature at all.** · VERIFIED against the chain's own
+/// source: `check:pkh`'s count clause is an EQUALITY (`:2069`,
+/// `=(m.form ~(wyt z-by pkh.witness.ctx))`) and `wyt` of an empty `z-by` is
+/// `0` (`zoon.hoon:299`); the permitted-set clause (`:2071`) is
+/// `∅ \ h = ∅`, which **never inspects `h` at all**; `~(rep z-by ~)` returns
+/// its bunted accumulator and the bunt of `?` is `%.y` (`zoon.hoon:220`); and
+/// `batch-verify` is `(levy batch verify)` (`ztd/three.hoon:1833-1837`),
+/// `%.y` on `~`. The Rust mirror agrees, by the same equality
+/// (`vesl-labs/services/chain/src/lock_check.rs`, `check_pkh`).
+///
+/// ⛔ **`m > |distinct members|` is the mirror image**: unsatisfiable by
+/// anyone. `ZSet` deduplicates **silently**, so passing one key twice for a
+/// 2-of-2 yields a one-element set still demanding two entries drawn from it.
+/// The message names how many collapsed, because the caller supplied two
+/// things and got one.
+///
+/// ⚑ Every `%pkh` in [`hold_lock`] goes through here. It is `pub` so future
+/// lock shapes cannot reintroduce either case by calling `Pkh::new` directly.
+pub fn pkh_conjunct(m: u64, members: Vec<Hash>) -> anyhow::Result<LockPrimitive> {
+    let supplied = members.len();
+    let pkh = Pkh::new(m, members);
+    let distinct = pkh.hashes.iter().count();
+    if m == 0 {
+        anyhow::bail!(
+            "a %pkh conjunct with m = 0 is satisfied by an EMPTY witness — the count \
+             check is an equality (0 == 0), the permitted-set check never inspects the \
+             set, the fold returns its bunted %.y and batch-verify is levy over ~. A \
+             zero-threshold branch is spendable by anyone with no signature at all. \
+             Refusing to build one."
+        );
+    }
+    if (distinct as u64) < m {
+        anyhow::bail!(
+            "a %pkh conjunct demands {m} signature(s) from a set of {distinct} distinct \
+             key(s) ({supplied} supplied, so {} collapsed through the z-set's silent \
+             dedup): check:pkh requires exactly m witness entries drawn from that set, \
+             so this branch is unsatisfiable by anyone. Refusing to build it.",
+            supplied - distinct
+        );
+    }
+    Ok(LockPrimitive::Pkh(pkh))
 }
 
 /// Consensus lock root (`hash:lock`).
@@ -547,16 +680,18 @@ mod tests {
     /// created under the old shape is stranded.
     #[test]
     fn the_hold_lock_is_xd3s_four_branch_shape() {
-        let (buyer, platform, h_k) = (pkh(10), pkh(20), pkh(30));
-        let job_com = pkh(40);
+        let (buyer, buyer_void, platform, h_k) = (pkh(10), pkh(15), pkh(20), pkh(30));
+        let (h_sb, job_com) = (pkh(35), pkh(40));
         let lock = hold_lock(
             buyer.clone(),
+            buyer_void.clone(),
             platform.clone(),
             h_k.clone(),
+            h_sb.clone(),
             576,
             job_com.clone(),
         )
-        .expect("two distinct parties");
+        .expect("three distinct parties");
         let branches = lock.flatten_spend_conditions();
         assert_eq!(lock.spend_condition_count(), 4);
 
@@ -566,8 +701,8 @@ mod tests {
         assert!(matches!(&capture.0[0], LockPrimitive::Pkh(p) if p.m == 2));
         assert!(matches!(&capture.0[1], LockPrimitive::Hax(_)));
 
-        // B2 void — the same 2-of-2, and NOTHING else. A void delivers
-        // nothing, so it must not require publishing the key.
+        // B2 void — a 2-of-2 on the buyer's DEDICATED key, and NOTHING else. A
+        // void delivers nothing, so it must not require publishing the key.
         let void = &branches[(HOLD_BRANCH_VOID - 1) as usize];
         assert_eq!(void.0.len(), 1);
         assert!(matches!(&void.0[0], LockPrimitive::Pkh(p) if p.m == 2));
@@ -576,9 +711,37 @@ mod tests {
             "a void must not carry the delivery condition"
         );
 
-        // B3 reclaim — the buyer alone, after the wait.
+        // ⭐⭐ THE ASSERTION THE OLD SHAPE TEST DID NOT MAKE, AND ITS ABSENCE IS
+        // WHY THE DEFECT SURVIVED: the two branches must name DIFFERENT KEYS.
+        // Everything above is about `m` and conjunct counts, and every one of
+        // those assertions passes on a lock whose B1 and B2 name the same pair
+        // — which is a lock a capture co-signature can spend on the void
+        // branch. `assert_ne!(capture.hash(), void.hash())` below does NOT
+        // catch it either: B1 carries an extra `%hax`, so the two branch
+        // hashes differ whatever the keys are.
+        let pkh_set = |c: &SpendCondition| match &c.0[0] {
+            LockPrimitive::Pkh(p) => p.hashes.iter().cloned().collect::<Vec<_>>(),
+            other => panic!("the first conjunct should be %pkh, got {other:?}"),
+        };
+        assert_ne!(
+            pkh_set(capture),
+            pkh_set(void),
+            "B1 and B2 must not name the same key set — a capture co-signature would \
+             then spend the void branch and publish no delivery key"
+        );
+        assert!(
+            pkh_set(void).contains(&buyer_void) && !pkh_set(void).contains(&buyer),
+            "B2 must name the buyer's dedicated VOID key and NOT its payment key"
+        );
+        assert!(
+            pkh_set(capture).contains(&buyer) && !pkh_set(capture).contains(&buyer_void),
+            "B1 must name the buyer's PAYMENT key"
+        );
+
+        // B3 reclaim — the buyer alone, after the wait, publishing its own
+        // per-job secret.
         let reclaim = &branches[(HOLD_BRANCH_RECLAIM - 1) as usize];
-        assert_eq!(reclaim.0.len(), 2);
+        assert_eq!(reclaim.0.len(), 3);
         assert!(matches!(&reclaim.0[0], LockPrimitive::Pkh(p) if p.m == 1));
         match &reclaim.0[1] {
             LockPrimitive::Tim(t) => {
@@ -587,6 +750,12 @@ mod tests {
             }
             other => panic!("reclaim's second conjunct should be %tim, got {other:?}"),
         }
+        assert_eq!(
+            reclaim.0[2],
+            LockPrimitive::Hax(Hax::new(vec![h_sb.clone()])),
+            "the reclaim publishes the buyer's own per-job secret — without it the \
+             buyer's ordinary payment signature reaches this branch too"
+        );
 
         // B4 padding — what `from-list` would have appended, AND the job. ⛔
         // The burn is FIRST and is what keeps the branch unspendable; the
@@ -612,7 +781,8 @@ mod tests {
     /// cannot execute — which strands the money exactly as surely.
     #[test]
     fn every_hold_branch_is_provable() {
-        let lock = hold_lock(pkh(10), pkh(20), pkh(30), 576, pkh(40)).expect("hold");
+        let lock =
+            hold_lock(pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), 576, pkh(40)).expect("hold");
         let root = lock_root(&lock).expect("hold root");
         for (branch, axis) in [
             (HOLD_BRANCH_CAPTURE, 12),
@@ -632,16 +802,31 @@ mod tests {
     /// be captured by publishing another.
     #[test]
     fn the_hold_address_binds_the_key() {
-        let h = |b, p, k, w, j| hold_lock(b, p, k, w, j).expect("hold");
-        let base = h(pkh(10), pkh(20), pkh(30), 576, pkh(40));
-        let other_key = h(pkh(10), pkh(20), pkh(31), 576, pkh(40));
-        let other_wait = h(pkh(10), pkh(20), pkh(30), 577, pkh(40));
-        let other_buyer = h(pkh(11), pkh(20), pkh(30), 576, pkh(40));
-        let other_job = h(pkh(10), pkh(20), pkh(30), 576, pkh(41));
+        let h = |b, v, p, k, sb, w, j| hold_lock(b, v, p, k, sb, w, j).expect("hold");
+        let base = h(pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), 576, pkh(40));
+        let other_key = h(pkh(10), pkh(15), pkh(20), pkh(31), pkh(35), 576, pkh(40));
+        let other_wait = h(pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), 577, pkh(40));
+        let other_buyer = h(pkh(11), pkh(15), pkh(20), pkh(30), pkh(35), 576, pkh(40));
+        let other_job = h(pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), 576, pkh(41));
+        // ⭐ The two operands row 10 added. Without these legs the
+        // operand-sensitivity guarantee silently loses two members, and a
+        // `hold_lock` that ignored either would still pass this test.
+        let other_void = h(pkh(10), pkh(16), pkh(20), pkh(30), pkh(35), 576, pkh(40));
+        let other_h_sb = h(pkh(10), pkh(15), pkh(20), pkh(30), pkh(36), 576, pkh(40));
         let r = |l: &Lock| lock_root(l).unwrap();
         assert_ne!(r(&base), r(&other_key), "h_k is an operand of the address");
         assert_ne!(r(&base), r(&other_wait), "r_reclaim is an operand too");
         assert_ne!(r(&base), r(&other_buyer));
+        assert_ne!(
+            r(&base),
+            r(&other_void),
+            "the buyer's VOID key is an operand of the address"
+        );
+        assert_ne!(
+            r(&base),
+            r(&other_h_sb),
+            "h_sb is an operand of the address — the reclaim's secret is part of the note"
+        );
         // ⭐⭐ And the job. Without this the padding branch commits to nothing:
         // a commitment that does not move the address is decoration.
         assert_ne!(
@@ -650,22 +835,177 @@ mod tests {
             "job_com is an operand of the address — one payment cannot back two jobs"
         );
         // ...and it is a pure function of its operands.
-        assert_eq!(r(&base), r(&h(pkh(10), pkh(20), pkh(30), 576, pkh(40))));
+        assert_eq!(
+            r(&base),
+            r(&h(
+                pkh(10),
+                pkh(15),
+                pkh(20),
+                pkh(30),
+                pkh(35),
+                576,
+                pkh(40)
+            ))
+        );
     }
 
     /// ⚑ The 2-of-2 is a threshold over a SET, so the two parties may be
     /// supplied in either order without moving the address. This is the
     /// already-proven half of `F1` reaching the artifact it actually guards.
+    ///
+    /// ⛔⛔ **THIS TEST'S PREMISE CHANGED AT ROW 10 AND THE OLD ONE IS NOW
+    /// FALSE.** It read *"B1 and B2 are symmetric in the pair"* and swapped
+    /// `buyer_pkh` with `platform_pkh` — which was fine only while both
+    /// branches named that one pair. `B2` now names `{buyer_void, platform}`,
+    /// so that swap moves B2 to a set it never had. Each branch is symmetric in
+    /// **its own** pair, and that is what is asserted: the two swaps are made
+    /// separately, and each is checked against the branch it belongs to.
     #[test]
     fn the_hold_address_does_not_depend_on_which_party_is_named_first() {
-        let a = hold_lock(pkh(10), pkh(20), pkh(30), 576, pkh(40)).expect("hold a");
-        let b = hold_lock(pkh(20), pkh(10), pkh(30), 576, pkh(40)).expect("hold b");
-        // B1 and B2 are symmetric in the pair; B3 names the buyer alone, so
-        // the whole lock is not symmetric — compare the branches that are.
-        let (ba, bb) = (a.flatten_spend_conditions(), b.flatten_spend_conditions());
-        for i in [HOLD_BRANCH_CAPTURE, HOLD_BRANCH_VOID] {
-            let i = (i - 1) as usize;
-            assert_eq!(ba[i].hash().unwrap(), bb[i].hash().unwrap());
-        }
+        let base = hold_lock(pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), 576, pkh(40))
+            .expect("hold base");
+        // B1's pair swapped: {buyer, platform} -> {platform, buyer}.
+        let swap_pay = hold_lock(pkh(20), pkh(15), pkh(10), pkh(30), pkh(35), 576, pkh(40))
+            .expect("hold with B1's pair swapped");
+        // B2's pair swapped: {buyer_void, platform} -> {platform, buyer_void}.
+        let swap_void = hold_lock(pkh(10), pkh(20), pkh(15), pkh(30), pkh(35), 576, pkh(40))
+            .expect("hold with B2's pair swapped");
+        let br = |l: &Lock, i: u64| {
+            l.flatten_spend_conditions()[(i - 1) as usize]
+                .hash()
+                .unwrap()
+        };
+        assert_eq!(
+            br(&base, HOLD_BRANCH_CAPTURE),
+            br(&swap_pay, HOLD_BRANCH_CAPTURE),
+            "B1 is a threshold over a set, so its pair's order must not move it"
+        );
+        assert_eq!(
+            br(&base, HOLD_BRANCH_VOID),
+            br(&swap_void, HOLD_BRANCH_VOID),
+            "B2 is a threshold over a set, so its pair's order must not move it"
+        );
+    }
+
+    /// ⭐⭐ THE THREE WAYS TO BUILD A BROKEN HOLD, EACH REFUSED — and each with
+    /// a positive control beside it, because a builder that refused everything
+    /// would pass the refusals alone.
+    ///
+    /// ⛔ `buyer_void == buyer_pay` is the one no shape assertion can see: it
+    /// builds a fully satisfiable four-branch lock with the right `m` values
+    /// and the right conjunct counts, and silently restores the defect
+    /// `hold_lock`'s own docs describe. **A wrong hash is inert; a wrong key is
+    /// live.**
+    #[test]
+    fn a_hold_that_would_be_unspendable_or_replayable_is_refused() {
+        let ok = |b, v, p| hold_lock(b, v, p, pkh(30), pkh(35), 576, pkh(40));
+        // The positive control: three distinct parties build.
+        assert!(
+            ok(pkh(10), pkh(15), pkh(20)).is_ok(),
+            "the honest trio builds"
+        );
+
+        // ⛔⛔ EACH REFUSAL IS CHECKED BY THE CAUSE IT NAMES, NOT MERELY BY
+        // BEING A REFUSAL. `pkh_conjunct`'s cardinality check already refuses
+        // two of these three as UNSATISFIABLE, so an `is_err()` assertion would
+        // stay green with the dedicated guards deleted and would be testing the
+        // wrong thing. The message is what distinguishes "this branch is
+        // unspendable" from "this lock is replayable", and they send a reader
+        // to different places.
+        let why = |b, v, p| ok(b, v, p).unwrap_err().to_string();
+
+        let e = why(pkh(10), pkh(15), pkh(10));
+        assert!(
+            e.contains("buyer and the platform"),
+            "buyer == platform collapses B1's 2-of-2: {e}"
+        );
+        let e = why(pkh(10), pkh(15), pkh(15));
+        assert!(
+            e.contains("VOID key and the platform"),
+            "buyer_void == platform collapses B2's 2-of-2, leaving a hold that can be \
+             captured but never cancelled: {e}"
+        );
+        let e = why(pkh(10), pkh(10), pkh(20));
+        assert!(
+            e.contains("VOID key is its PAYMENT key"),
+            "buyer_void == buyer_pay lets a capture co-signature spend the void \
+             branch — and NOTHING else in this builder refuses it: {e}"
+        );
+
+        // ⛔ And the reason the third one needs its own guard: without it the
+        // lock is BUILDABLE and passes every structural assertion the shape
+        // test makes. This is that claim, made explicit rather than argued —
+        // the collapsed lock is assembled by hand, exactly as `hold_lock`
+        // would have built it, and every shape property still holds.
+        let collapsed = Lock::V4(LockV4 {
+            p: LockV2 {
+                p: SpendCondition::new(vec![
+                    pkh_conjunct(2, vec![pkh(10), pkh(20)]).unwrap(),
+                    LockPrimitive::Hax(Hax::new(vec![pkh(30)])),
+                ]),
+                q: SpendCondition::new(vec![pkh_conjunct(2, vec![pkh(10), pkh(20)]).unwrap()]),
+            },
+            q: LockV2 {
+                p: SpendCondition::new(vec![
+                    pkh_conjunct(1, vec![pkh(10)]).unwrap(),
+                    LockPrimitive::Tim(LockTim {
+                        rel: TimelockRangeRelative::new(Some(BlockHeightDelta(Belt(576))), None),
+                        abs: TimelockRangeAbsolute::none(),
+                    }),
+                    LockPrimitive::Hax(Hax::new(vec![pkh(35)])),
+                ]),
+                q: SpendCondition::new(vec![
+                    LockPrimitive::Burn,
+                    LockPrimitive::Hax(Hax::new(vec![pkh(40)])),
+                ]),
+            },
+        });
+        let b = collapsed.flatten_spend_conditions();
+        assert_eq!(collapsed.spend_condition_count(), 4);
+        assert!(matches!(&b[0].0[0], LockPrimitive::Pkh(p) if p.m == 2));
+        assert!(matches!(&b[1].0[0], LockPrimitive::Pkh(p) if p.m == 2));
+        assert_eq!(b[1].0.len(), 1);
+        assert_ne!(
+            b[0].hash().unwrap(),
+            b[1].hash().unwrap(),
+            "even the cross-branch check passes: B1's extra %hax separates them"
+        );
+        assert!(
+            lock_root(&collapsed).is_ok(),
+            "⛔ it has a perfectly good address — nothing structural rejects it, which \
+             is why the refusal must be a check on the KEYS in `hold_lock`"
+        );
+    }
+
+    /// ⭐⭐ A zero-threshold `%pkh` is spendable by ANYONE with an empty
+    /// witness, and nothing in the chain rejects it. `pkh_conjunct` is where
+    /// that stops. ⚑ The positive controls are the two shapes the hold itself
+    /// uses, so a guard that refused everything would fail here.
+    #[test]
+    fn a_pkh_conjunct_with_no_threshold_or_too_high_a_threshold_is_refused() {
+        assert!(
+            pkh_conjunct(2, vec![pkh(1), pkh(2)]).is_ok(),
+            "the 2-of-2 builds"
+        );
+        assert!(pkh_conjunct(1, vec![pkh(1)]).is_ok(), "the 1-of-1 builds");
+
+        assert!(
+            pkh_conjunct(0, vec![pkh(1), pkh(2)]).is_err(),
+            "m = 0 is satisfied by an EMPTY witness — spendable by anyone"
+        );
+        assert!(
+            pkh_conjunct(0, vec![]).is_err(),
+            "m = 0 over an empty set is the same hole"
+        );
+        // The z-set dedups silently, so this asks two signatures of a
+        // one-element set: unsatisfiable by anyone.
+        assert!(
+            pkh_conjunct(2, vec![pkh(1), pkh(1)]).is_err(),
+            "a repeated member collapses the set and strands the branch"
+        );
+        assert!(
+            pkh_conjunct(3, vec![pkh(1), pkh(2)]).is_err(),
+            "m greater than the set size is unsatisfiable"
+        );
     }
 }
