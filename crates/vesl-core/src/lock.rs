@@ -898,38 +898,89 @@ mod tests {
     /// live.**
     #[test]
     fn a_hold_that_would_be_unspendable_or_replayable_is_refused() {
-        let ok = |b, v, p| hold_lock(b, v, p, pkh(30), pkh(35), 576, pkh(40));
+        // ⚑ The hold's KEY operands, in the order `hold_lock` takes them. This
+        // list is the subject of the sweep below AND of the structural tripwire
+        // at the end, which is derived from the LOCK rather than from here.
+        const KEYS: [&str; 3] = ["buyer_pkh", "buyer_void_pkh", "platform_pkh"];
+        let distinct = || [pkh(10), pkh(15), pkh(20)];
+        let ok = |k: [Hash; 3]| {
+            hold_lock(
+                k[0].clone(),
+                k[1].clone(),
+                k[2].clone(),
+                pkh(30),
+                pkh(35),
+                576,
+                pkh(40),
+            )
+        };
         // The positive control: three distinct parties build.
-        assert!(
-            ok(pkh(10), pkh(15), pkh(20)).is_ok(),
-            "the honest trio builds"
-        );
+        assert!(ok(distinct()).is_ok(), "the honest trio builds");
 
-        // ⛔⛔ EACH REFUSAL IS CHECKED BY THE CAUSE IT NAMES, NOT MERELY BY
-        // BEING A REFUSAL. `pkh_conjunct`'s cardinality check already refuses
-        // two of these three as UNSATISFIABLE, so an `is_err()` assertion would
-        // stay green with the dedicated guards deleted and would be testing the
-        // wrong thing. The message is what distinguishes "this branch is
-        // unspendable" from "this lock is replayable", and they send a reader
-        // to different places.
-        let why = |b, v, p| ok(b, v, p).unwrap_err().to_string();
+        // ⭐⭐ EVERY PAIR, SWEPT — not three hand-written cases. Adding a fourth
+        // key operand and forgetting its guard fails here rather than shipping a
+        // lock that passes every shape assertion.
+        //
+        // ⛔⛔ AND EACH REFUSAL IS CHECKED BY THE CAUSE IT NAMES, NOT MERELY BY
+        // BEING A REFUSAL. `pkh_conjunct`'s cardinality check already refuses two
+        // of these three as UNSATISFIABLE, so an `is_err()` assertion would stay
+        // green with the dedicated guards deleted and would be testing the wrong
+        // thing. The message is what distinguishes "this branch is unspendable"
+        // from "this lock is replayable", and they send a reader to different
+        // places.
+        let cause = |a: usize, b: usize| -> &'static str {
+            match (KEYS[a], KEYS[b]) {
+                ("buyer_pkh", "platform_pkh") => "buyer and the platform",
+                ("buyer_void_pkh", "platform_pkh") => "VOID key and the platform",
+                ("buyer_pkh", "buyer_void_pkh") => "VOID key is its PAYMENT key",
+                (x, y) => panic!(
+                    "no named cause for {x} == {y}: a key operand was added to KEYS \
+                     without a guard and without a message that tells a reader which \
+                     of the two failures this is"
+                ),
+            }
+        };
+        for a in 0..KEYS.len() {
+            for b in (a + 1)..KEYS.len() {
+                let mut k = distinct();
+                k[b] = k[a].clone();
+                let e = ok(k)
+                    .expect_err(&format!("{} == {} must be refused", KEYS[a], KEYS[b]))
+                    .to_string();
+                assert!(
+                    e.contains(cause(a, b)),
+                    "{} == {} must be refused BY ITS OWN CAUSE, got: {e}",
+                    KEYS[a],
+                    KEYS[b]
+                );
+            }
+        }
 
-        let e = why(pkh(10), pkh(15), pkh(10));
-        assert!(
-            e.contains("buyer and the platform"),
-            "buyer == platform collapses B1's 2-of-2: {e}"
-        );
-        let e = why(pkh(10), pkh(15), pkh(15));
-        assert!(
-            e.contains("VOID key and the platform"),
-            "buyer_void == platform collapses B2's 2-of-2, leaving a hold that can be \
-             captured but never cancelled: {e}"
-        );
-        let e = why(pkh(10), pkh(10), pkh(20));
-        assert!(
-            e.contains("VOID key is its PAYMENT key"),
-            "buyer_void == buyer_pay lets a capture co-signature spend the void \
-             branch — and NOTHING else in this builder refuses it: {e}"
+        // ⭐⭐ THE TRIPWIRE, DERIVED FROM THE LOCK AND NOT FROM `KEYS`. An honest
+        // hold names exactly this many DISTINCT keys across its branches. Add a
+        // key operand and this fails without anyone having remembered to extend
+        // the sweep — which is the failure mode the sweep alone cannot catch.
+        let honest = ok(distinct()).expect("honest");
+        let mut members: Vec<Hash> = Vec::new();
+        for branch in honest.flatten_spend_conditions() {
+            for prim in branch.0.iter() {
+                if let LockPrimitive::Pkh(p) = prim {
+                    for h in p.hashes.iter() {
+                        if !members.contains(h) {
+                            members.push(h.clone());
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            members.len(),
+            KEYS.len(),
+            "the hold names {} distinct keys across its branches but KEYS lists {} — a \
+             key operand was added or two collapsed together. Every pair of them needs \
+             a guard and a named cause.",
+            members.len(),
+            KEYS.len()
         );
 
         // ⛔ And the reason the third one needs its own guard: without it the
