@@ -196,7 +196,9 @@ pub fn build_seeds(
         gift: nockchain_types::tx_engine::common::Nicks(gift_nicks),
         parent_hash,
     };
-    Ok(nockchain_types::tx_engine::v1::tx::Seeds(vec![seed]))
+    let mut seeds = nockchain_types::tx_engine::v1::tx::Seeds(vec![seed]);
+    pin_output_source(&mut seeds)?; // ⭐ x402 board row `19b`
+    Ok(seeds)
 }
 
 /// One output of a capture: where it pays, what rides on it, and how much.
@@ -297,7 +299,7 @@ pub fn build_capture_seeds(
         ))
     };
 
-    Ok(Seeds(
+    let mut seeds = Seeds(
         outputs
             .iter()
             .map(|out| {
@@ -310,7 +312,134 @@ pub fn build_capture_seeds(
                 })
             })
             .collect::<Result<Vec<_>>>()?,
-    ))
+    );
+    // ⭐ x402 board row `19b`. Every output this fleet signs carries its group's
+    // own fingerprint; the refusal above stays because it names a cause where a
+    // consensus rejection does not.
+    pin_output_source(&mut seeds)?;
+    Ok(seeds)
+}
+
+/// ⭐⭐ **PIN `output-source` ON EVERY SEED OF A SPEND — x402 board row `19b`.**
+///
+/// ⚑ *In plain terms: stamp each payout line with a fingerprint of the payout
+/// lines it belongs with, so that if anyone folds another payment's line into
+/// ours the chain refuses the whole transaction instead of quietly merging
+/// them.*
+///
+/// ⛔⛔ **IT IS A TRIPWIRE, NOT A SEPARATOR, AND THE DIFFERENCE IS THE WHOLE
+/// POINT.** `build-outputs` (`tx-engine-1.hoon:2345-2404`) keys the merge on
+/// `lock-root` **and nothing else**, and strips `output-source` from every seed
+/// before hashing the group (`:2372-2375`). So a pinned seed merges exactly as
+/// an unpinned one does. What the pin buys is `validate:output` (`:1399-1427`),
+/// which walks the merged group with `levy` and — if any member's claimed
+/// source is not the group's actual one — makes `validate:tx` reject the
+/// **entire transaction** (`tx-engine.hoon:1349`). Upstream's own negative
+/// records this shape: `new:tx` SUCCEEDS and validation then fails
+/// (`hoon/tests/dumb/mod/unit/transact-v1.hoon:2626-2674`).
+///
+/// ⛔ **What it protects against is a seed we did not author.** Our own callers
+/// already refuse two outputs under one lock root — [`build_capture_seeds`]
+/// here, and the buyer wallet's hold/deposit check — and those refusals should
+/// stay, because they fail early and name a cause where consensus does not. The
+/// hazard this closes is CROSS-INPUT: the signed digest covers only *this
+/// spend's* seeds and fee (`tx-engine-1.hoon:1116-1121`), so another input in
+/// the same transaction can land a seed on our lock root without disturbing our
+/// signature, and the merged note's note-data is `uni`-merged with the later
+/// seed winning.
+///
+/// ⛔⛔⛔ **THE LIMIT OF THIS HELPER, AND IT CAN REFUSE OUR OWN HONEST
+/// PAYMENT: IT SEES ONE SPEND; CONSENSUS GROUPS ACROSS THE WHOLE
+/// TRANSACTION.** `build-outputs` creates its accumulator ONCE, before the
+/// spend loop, and threads it across every spend (`tx-engine-1.hoon:2350`,
+/// `:2404`) — so the group it hashes spans **every seed in the transaction** at
+/// that lock root. This function is handed **one spend's** `Seeds` and can only
+/// hash those.
+///
+/// For every transaction this fleet builds the two coincide, because we build
+/// **single-input** transactions and nothing can encode otherwise —
+/// `jam_spends_manual` refuses more than one spend
+/// (`vesl-core/src/tx_builder.rs:259-266`, `x402 XE-21`). ⇒ **not reachable
+/// today.**
+///
+/// ⛔ **It becomes reachable the moment anything builds a MULTI-INPUT
+/// transaction whose two spends pay the same lock root** — the address fan-out
+/// sketched in `x402 XQ-6a` is exactly that shape. Then each spend would pin a
+/// group computed from its own seeds alone, consensus would compute one from
+/// both, they would not match, and **consensus would refuse a transaction we
+/// authored entirely and correctly.**
+///
+/// ⚑⚑ **The same property is protective outward and a trap inward, and that is
+/// not a defect to be designed away.** Pinning only what our own spend can see
+/// is *precisely* what makes a stranger's seed on our lock root fatal rather
+/// than silent (measured: `output_source_devnet` legs `X1`/`X3`). A version
+/// that pinned the whole transaction's group would agree with a stranger's
+/// tampering by construction and guard nothing.
+///
+/// ⇒ **If a multi-input builder is ever added, it must pin across ALL of its
+/// own spends at once** — one grouping pass over the assembled `Spends`, not a
+/// call per spend — and that is a different function from this one.
+///
+/// ⛔⛔ **THREE ORDERING RULES, EACH SILENTLY WRONG IF MISSED:**
+///
+/// 1. **Per lock-root GROUP, not per seed.** Consensus computes one source per
+///    group. Our groups are singletons only because of the refusals above,
+///    which live one layer up and could be relaxed — so this handles the
+///    general case rather than assuming its caller's invariant.
+/// 2. **Before signing.** `sig-hashable:seed` covers the field
+///    (`tx-engine-1.hoon:707-715`), so a pin written after the signature is a
+///    signature over a different object.
+/// 3. **Inside the fee loop.** A `seeds_for(fee)` closure re-derives the seed
+///    set per candidate fee, so the pin belongs inside it. Applied once
+///    outside, it would be computed over a set the accepted fee replaces.
+///
+/// ⚑ The normalisation Hoon performs by hand is free here: `HashHashable for
+/// Seed` already folds only `lock_root`, `note_data`, `gift` and `parent_hash`
+/// (`nockchain-types/src/tx_engine/v1/tx.rs:1229-1242`), excluding
+/// `output_source` for the hash-loop reason `tx-engine-0.hoon:1971` gives. The
+/// `output_source: None` below is therefore belt-and-braces, not load-bearing —
+/// it keeps the call honest if that ever changes.
+pub fn pin_output_source(seeds: &mut nockchain_types::tx_engine::v1::tx::Seeds) -> Result<()> {
+    use nockchain_types::tx_engine::common::Source;
+    use nockchain_types::tx_engine::v1::hashable::HashHashable;
+    use nockchain_types::tx_engine::v1::tx::Seeds;
+
+    // Group by lock root, preserving first-seen order so the walk is
+    // deterministic. `Vec` rather than a map: a spend has a handful of seeds,
+    // and `Hash` would need a `Hash` impl this crate does not control.
+    let mut groups: Vec<(nockchain_types::tx_engine::common::Hash, Vec<usize>)> = Vec::new();
+    for (i, seed) in seeds.0.iter().enumerate() {
+        match groups.iter_mut().find(|(root, _)| root == &seed.lock_root) {
+            Some((_, members)) => members.push(i),
+            None => groups.push((seed.lock_root.clone(), vec![i])),
+        }
+    }
+
+    for (_, members) in groups {
+        // ⚑ `Seeds` encodes as a z-SET, so two members identical in every other
+        // field collapse to one element here — which is exactly what consensus
+        // does when it builds the same group, so the two agree by construction.
+        let group = Seeds(
+            members
+                .iter()
+                .map(|&i| {
+                    let mut s = seeds.0[i].clone();
+                    s.output_source = None;
+                    s
+                })
+                .collect(),
+        );
+        let hash = group
+            .hash_digest()
+            .map_err(|e| anyhow::anyhow!("output-source: hashing the lock-root group: {e}"))?;
+        for &i in &members {
+            seeds.0[i].output_source = Some(Source {
+                hash: hash.clone(),
+                is_coinbase: false,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Sign a sig-hash with a secret key.
@@ -1254,6 +1383,150 @@ mod tests {
             note_data: nockchain_types::tx_engine::v1::note::NoteData::new(Vec::new()),
             amount,
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // ⭐⭐ `output-source` — x402 board row `19b`. See `PROPOSAL-output-source.md`.
+    // -----------------------------------------------------------------------
+
+    use nockchain_types::tx_engine::v1::hashable::HashHashable;
+    use nockchain_types::tx_engine::v1::tx::{Seed, Seeds};
+
+    fn bare_seed(lock: u64, gift: usize, parent: u64) -> Seed {
+        Seed {
+            output_source: None,
+            lock_root: root(lock),
+            note_data: nockchain_types::tx_engine::v1::note::NoteData::new(Vec::new()),
+            gift: nockchain_types::tx_engine::common::Nicks(gift),
+            parent_hash: root(parent),
+        }
+    }
+
+    /// ⭐ Every output a capture signs carries a pin. This is the guard that
+    /// board row `19b` actually landed; with the `pin_output_source` call
+    /// removed from `build_capture_seeds` it fails on its own assertion.
+    #[test]
+    fn every_capture_output_is_pinned() {
+        let outs = [out(1, 94_500), out(2, 5_500), out(3, 899_750)];
+        let seeds = build_capture_seeds(&outs, &root(9), 1_000_000, 250).expect("conserves");
+        assert_eq!(seeds.0.len(), 3);
+        for (i, seed) in seeds.0.iter().enumerate() {
+            let src = seed
+                .output_source
+                .as_ref()
+                .unwrap_or_else(|| panic!("capture output {i} declines the pin"));
+            assert!(
+                !src.is_coinbase,
+                "a capture output is not a coinbase, so its source must say so"
+            );
+        }
+    }
+
+    /// ⛔⛔ **THE ONE THAT CATCHES A PER-SEED IMPLEMENTATION.** Consensus
+    /// computes ONE source per lock-root GROUP, over every seed in the group
+    /// (`build-outputs`, `tx-engine-1.hoon:2364-2380`). A helper that hashed
+    /// each seed on its own would produce two different values here, and both
+    /// would be wrong — the transaction would be refused by consensus with
+    /// nothing to read. So this asserts the two members share ONE value and
+    /// that it is the TWO-element group's hash, not either singleton's.
+    ///
+    /// ⚑ `build_capture_seeds` refuses a same-root pair, deliberately, so this
+    /// reaches `pin_output_source` directly. The pair is legal at consensus;
+    /// what our builders decline is emitting one.
+    #[test]
+    fn a_shared_lock_root_gets_one_group_pin_not_two_singleton_pins() {
+        let mut seeds = Seeds(vec![bare_seed(1, 10, 9), bare_seed(1, 20, 9)]);
+        let singleton_a = Seeds(vec![bare_seed(1, 10, 9)])
+            .hash_digest()
+            .expect("singleton a");
+        let group = Seeds(vec![bare_seed(1, 10, 9), bare_seed(1, 20, 9)])
+            .hash_digest()
+            .expect("group");
+        assert_ne!(
+            singleton_a, group,
+            "the control: a singleton and the pair must hash differently, or this test \
+             could not tell a per-seed pin from a per-group one"
+        );
+
+        pin_output_source(&mut seeds).expect("pin");
+        let a = seeds.0[0].output_source.clone().expect("a is pinned");
+        let b = seeds.0[1].output_source.clone().expect("b is pinned");
+        assert_eq!(a, b, "two seeds under one lock root share one source");
+        assert_eq!(
+            a.hash, group,
+            "and it is the GROUP's hash, not a singleton's"
+        );
+    }
+
+    /// Two seeds under DIFFERENT lock roots are different groups, so they must
+    /// NOT share a value — the discrimination control for the test above.
+    #[test]
+    fn different_lock_roots_get_different_pins() {
+        let mut seeds = Seeds(vec![bare_seed(1, 10, 9), bare_seed(2, 20, 9)]);
+        pin_output_source(&mut seeds).expect("pin");
+        let a = seeds.0[0].output_source.clone().expect("a");
+        let b = seeds.0[1].output_source.clone().expect("b");
+        assert_ne!(
+            a, b,
+            "seeds at different addresses are different output groups"
+        );
+    }
+
+    /// ⭐ **THE PIN IS FEE-NEUTRAL, AND THE OBVIOUS GUESS IS THAT IT IS NOT.**
+    /// A pinned field is a bigger noun than an empty one and the chain meters
+    /// by leaf count, so one would expect every transaction to get dearer and
+    /// `U8`'s floors to move. `count_seed_words` walks `seed.note_data` and
+    /// nothing else, so it does not — and this pins that rather than leaving it
+    /// as a code read, because it is exactly the sort of fact that would go
+    /// stale in silence the first time the meter's basis widened.
+    #[test]
+    fn fee_is_unchanged_by_pinning_output_source() {
+        use nockchain_types::tx_engine::common::{Name, Nicks};
+        use nockchain_types::tx_engine::v1::tx::{
+            LockMerkleProof, LockMerkleProofFull, MerkleProof, PkhSignature, Spend, Spend1, Spends,
+            Witness,
+        };
+
+        let spends_of = |seeds: Seeds| {
+            let lmp = LockMerkleProof::Full(LockMerkleProofFull {
+                version: nockvm_macros::tas!(b"full"),
+                spend_condition: nockchain_types::tx_engine::v1::tx::SpendCondition::simple_pkh(
+                    root(7),
+                ),
+                axis: 1,
+                proof: MerkleProof {
+                    root: root(7),
+                    path: vec![],
+                },
+            });
+            Spends(vec![(
+                Name::new(root(5), root(6)),
+                Spend::Witness(Spend1 {
+                    witness: Witness::new(lmp, PkhSignature::new(vec![]), vec![]),
+                    seeds,
+                    fee: Nicks(0),
+                }),
+            )])
+        };
+
+        let bare = Seeds(vec![bare_seed(1, 10, 9), bare_seed(2, 20, 9)]);
+        let mut pinned = bare.clone();
+        pin_output_source(&mut pinned).expect("pin");
+        assert!(
+            pinned.0.iter().all(|s| s.output_source.is_some()),
+            "the control: this test is vacuous unless the pin actually landed"
+        );
+
+        let constants = crate::fee::FeeConstants::fakenet();
+        let height = constants.bythos_phase + 1;
+        let before =
+            crate::fee::calculate_min_fee(&spends_of(bare), height, &constants).expect("before");
+        let after =
+            crate::fee::calculate_min_fee(&spends_of(pinned), height, &constants).expect("after");
+        assert_eq!(
+            before, after,
+            "pinning output-source must not move the consensus minimum fee"
+        );
     }
 
     /// The honest `XD-5` shape: escrow + commission + the buyer's change, plus
