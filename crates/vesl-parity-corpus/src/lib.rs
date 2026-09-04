@@ -369,33 +369,46 @@ pub fn shapes() -> Result<Vec<Shape>> {
     });
 
     // ── 6 · the buyer's posting spend: hold + deposit + change ──────────────
-    // ⛔ RESIDUAL, recorded rather than hidden: there is NO shipped builder for
-    // these seeds. The buyer's real one is inline at
-    // `vesl-x402/crates/x402-nockchain-wallet-client/src/lib.rs:464-527`, which
-    // `vesl-core` cannot call without a dependency cycle. This mirrors the
-    // two-step every production site uses — `Seeds(vec![…])` then
-    // `pin_output_source`, exactly as `vesl-labs/services/chain/src/
-    // bounty_tx.rs:109-131` does. That the builder does not exist is an `XD-7`
-    // one-home defect and is filed as one.
+    // ✅ **THE RESIDUAL HERE IS CLOSED (2026-09-04), AND THE FIX WAS A NAME.**
+    // This comment read: *"there is NO shipped builder for these seeds … which
+    // `vesl-core` cannot call without a dependency cycle"*, and the block below
+    // mirrored the two-step by hand — the `XD-7` one-home defect `records/S124`
+    // `§5` filed. Both halves were wrong about the cause. The builder existed,
+    // in this very crate's dependency, as `build_capture_seeds`; only its name
+    // claimed it was a capture's, while the close-out's refund and both void
+    // paths already called it. It is now also `build_output_seeds`, and the
+    // buyer's real posting (`vesl-x402/.../wallet-client/src/lib.rs`) calls it
+    // too. ⇒ this corpus entry no longer mirrors production; it IS production's
+    // builder, on fixed operands.
+    //
+    // ⛔ The dependency never ran the way that sentence claimed: `vesl-x402`
+    // depends on `vesl-core`, so nothing here ever had to reach the other way.
     out.push(Shape {
         name: "hold-post-3seed-pinned",
         seeds: {
             let parent = h(9);
-            let mut s = Seeds(vec![
-                seed_to(
-                    vesl_core::lock::lock_root(&demo_hold_lock()?)?,
-                    900_000,
-                    parent.clone(),
-                ),
-                seed_to(
-                    vesl_core::lock::lock_root(&demo_deposit_lock()?)?,
-                    60_000,
-                    parent.clone(),
-                ),
-                seed_to(h(8), 39_750, parent),
-            ]);
-            vesl_core::settle::pin_output_source(&mut s)?;
-            s
+            vesl_core::settle::build_output_seeds(
+                &[
+                    vesl_core::settle::OutputLine {
+                        lock_root: vesl_core::lock::lock_root(&demo_hold_lock()?)?,
+                        note_data: NoteData::new(Vec::new()),
+                        amount: 900_000,
+                    },
+                    vesl_core::settle::OutputLine {
+                        lock_root: vesl_core::lock::lock_root(&demo_deposit_lock()?)?,
+                        note_data: NoteData::new(Vec::new()),
+                        amount: 60_000,
+                    },
+                    vesl_core::settle::OutputLine {
+                        lock_root: h(8),
+                        note_data: NoteData::new(Vec::new()),
+                        amount: 39_750,
+                    },
+                ],
+                &parent,
+                1_000_000,
+                250,
+            )?
         },
         fee: 250,
         signer: signer(11),

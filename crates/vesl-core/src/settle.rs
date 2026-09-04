@@ -320,6 +320,30 @@ pub fn build_capture_seeds(
     Ok(seeds)
 }
 
+/// The neutral name for [`CaptureOutput`] — one payout line of any spend.
+pub use self::CaptureOutput as OutputLine;
+/// ⭐⭐ **THE NEUTRAL NAME FOR [`build_capture_seeds`] — it is this fleet's ONE
+/// home for ANY spend's output set, not only a capture's.**
+///
+/// ⚑ *In plain terms: the same routine that assembles the payout lines of a
+/// settlement also assembles them for a refund, a cancellation, and the buyer's
+/// own first payment. Only its name said otherwise.*
+///
+/// ⛔⛔ **THE NAME WAS ALREADY LYING, · VERIFIED 2026-09-04**: the close-out's
+/// refund (`vesl-labs/services/gateway/src/close_out.rs`), the pre-signed void
+/// (`services/gateway/src/void_route.rs`) and the buyer's own void co-signature
+/// (`vesl-x402/.../void_cosign.rs`) all call it, and none of them is a capture.
+/// The **only** production site that did not was the buyer's admission
+/// transaction, which hand-rolled the same three steps inline — and that is the
+/// `XD-7` one-home defect `records/S124` `§5` filed as *"there is NO shipped
+/// builder for the buyer's posting seeds."* There is; it was misnamed.
+///
+/// ⚑ **A re-export, not a second function.** Two spellings of one *value* is the
+/// defect `XD-7` is about; two names for one *item* is checked by the compiler
+/// to be the same item, so a caller cannot reach a stale copy. The old name is
+/// kept because it is cited by `file:line` across four repositories.
+pub use self::build_capture_seeds as build_output_seeds;
+
 /// ⭐⭐ **PIN `output-source` ON EVERY SEED OF A SPEND — x402 board row `19b`.**
 ///
 /// ⚑ *In plain terms: stamp each payout line with a fingerprint of the payout
@@ -363,11 +387,24 @@ pub fn build_capture_seeds(
 /// today.**
 ///
 /// ⛔ **It becomes reachable the moment anything builds a MULTI-INPUT
-/// transaction whose two spends pay the same lock root** — the address fan-out
-/// sketched in `x402 XQ-6a` is exactly that shape. Then each spend would pin a
-/// group computed from its own seeds alone, consensus would compute one from
-/// both, they would not match, and **consensus would refuse a transaction we
-/// authored entirely and correctly.**
+/// transaction whose two spends pay the same lock root.** Then each spend would
+/// pin a group computed from its own seeds alone, consensus would compute one
+/// from both, they would not match, and **consensus would refuse a transaction
+/// we authored entirely and correctly.**
+///
+/// ⛔⛔ **THIS PARAGRAPH NAMED THE WRONG EXAMPLE UNTIL 2026-09-04, AND THE
+/// WRONG EXAMPLE IS THE ONE A BUILDER WAS ABOUT TO REACH FOR.** It said *"the
+/// address fan-out sketched in `x402 XQ-6a` is exactly that shape"*. It is not:
+/// a fan-out is **ONE input paying N outputs**, which `records/S117` `§6` states
+/// in as many words — *"one input note funds N fresh addresses in ONE spend …
+/// it does not need multi-input support, which is the thing that is actually
+/// blocked"*. Its N outputs sit at N **distinct** lock roots, so every group is
+/// a singleton and this helper's view and consensus's coincide exactly.
+/// ⇒ the fan-out is expressible today and does **not** trip the hazard above.
+/// What would trip it is re-funding a batch from **two** notes at once — and
+/// that is refused three frames earlier by `jam_spends_manual`. ⚑ A hazard note
+/// that names an unreachable example teaches a builder to route around a wall
+/// that is not there; the hazard is real, the citation was not.
 ///
 /// ⚑⚑ **The same property is protective outward and a trap inward, and that is
 /// not a defect to be designed away.** Pinning only what our own spend can see
