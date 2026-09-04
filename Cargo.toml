@@ -6,6 +6,7 @@ members = [
     "crates/nock-noun-rs",
     "crates/nockchain-tip5-rs",
     "crates/nockchain-client-rs",
+    "crates/vesl-parity-corpus",
     "kernels/guard",
     "kernels/mint",
     "kernels/settle",

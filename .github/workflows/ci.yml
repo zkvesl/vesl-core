@@ -54,8 +54,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: vesl-core
+      # ⛔ `vesl-parity-corpus` IS NAMED HERE ON PURPOSE. It carries the
+      # Hoon/Rust parity pin — the frozen answer sheet holding the digests the
+      # chain's own kernel computes, checked by recomputing them in pure Rust.
+      # It is a workspace member vesl-core does not depend on, so a bare
+      # `-p vesl-core` would never build or run it: a target nothing names does
+      # not exist. ⚑ Named explicitly rather than `--workspace`, which would
+      # newly drag the four `kernels/*` members into CI for the first time.
       - name: Run tests (vesl-core)
-        run: cargo test -p vesl-core
+        run: cargo test -p vesl-core -p vesl-parity-corpus
         working-directory: vesl-core
 
   audit:
@@ -118,5 +125,5 @@ jobs:
         with:
           workspaces: vesl-core
       - name: Clippy (vesl-core)
-        run: cargo clippy -p vesl-core -- -D warnings
+        run: cargo clippy -p vesl-core -p vesl-parity-corpus -- -D warnings
         working-directory: vesl-core

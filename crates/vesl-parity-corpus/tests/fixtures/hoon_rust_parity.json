@@ -1,0 +1,38 @@
+{
+  "_": "The KERNEL's own sig-hash and tx-id per corpus shape. Generated — never hand-edited. See vesl-core/crates/vesl-parity-corpus/tests/hoon_rust_parity.rs.",
+  "generated_by": "vesl-labs/services/chain/examples/regen_parity_fixture.rs",
+  "kernel_jam_sha256": "2df579b635d826f9c975037cc94646dfee6c45d9274458b6c3878b57918cb93c",
+  "nockchain_rev": "0626e6ab5a2aeb8313a052d878792c6b575669bd",
+  "shapes": {
+    "capture-3out-opaque-notedata": {
+      "sig_hash": "5vzxvqyHD8hwBxrZWhwWMCPGhTGZPMrWTiS7dS64tH3ewNcsWmeUjMV",
+      "tx_id": "6QsUnWaH47qyTmjEEU8qP6j2kXFpedYKo5Yy8rqNHbndx9Z4hWEFY2V",
+      "why": "the escrow output carries note-data: the digest must see it (S117's positive control)"
+    },
+    "capture-3out-pinned": {
+      "sig_hash": "3QWFpKPHpy8jcJbRJHJzp7seyCQHexNWPqMN5sUGZddisaD7nKnTHBo",
+      "tx_id": "3xmmcdqATyXj9EpLf4zaCfyfudCGQPsqvWJPtaSQxLqmPaLA4cwpmQj",
+      "why": "today's shipped capture, straight out of build_capture_seeds"
+    },
+    "capture-3out-typed-lock-notedata": {
+      "sig_hash": "3jK2ucgh94TUcRXW51tdm7XaGdXzKtDMP4dJLYiBNEFdzHV7FGHmja9",
+      "tx_id": "8aqxWu67hBC82763PNZESYPnmZNRRu7ddRKU4M1mEWvUfX9TpaL5bjj",
+      "why": "a %lock-typed entry — the coverage gap nockchain-types' own TODO names"
+    },
+    "capture-3out-unpinned": {
+      "sig_hash": "58W1NyPWnCiUNDUzjLuN2xE3DXLp91gExd3TCtB9yPsJPwkDYx9n2zi",
+      "tx_id": "DdWJwaxH65MRuiQ4qSPnUUofnZG95V6cLFwtjVuTZRmBrVwV11xB341",
+      "why": "the pre-row-19 value: what every seed looked like before we pinned output-source"
+    },
+    "hold-post-3seed-pinned": {
+      "sig_hash": "FdGdgdqBmGscF8mKW5tfaK6QdGm5dbyrjt8XsWDUiH3F1Sq1vjUqCZ",
+      "tx_id": "CkGvkNP8K1wbmwhnyzCQBJVMRXDWQaL4re19w8SeRjp8vhGx1R46jUh",
+      "why": "what a buyer's wallet posts: the hold, the deposit beside it, and the change"
+    },
+    "single-seed-notedata-manual-jam": {
+      "sig_hash": "67gukKFhReTVEEKR7s9GtCCCoPKEoXzuANW8SN1EeqpqYsQ9cT2zJnF",
+      "tx_id": "5DS8LmKzwoMMH7GWbsWRqB3S5y8yE7Hr2zRq2GbLpBUf5q2r8PjLYmN",
+      "why": "forces jam_seeds_manual, the encoder the three-seed shapes never reach"
+    }
+  }
+}

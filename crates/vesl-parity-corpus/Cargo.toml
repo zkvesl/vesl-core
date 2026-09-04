@@ -1,0 +1,32 @@
+[package]
+name = "vesl-parity-corpus"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The Hoon/Rust parity corpus and its frozen oracle (x402 board, records/S117 §12)"
+license = "MIT OR Apache-2.0"
+
+# ⛔⛔ WHY THIS IS ITS OWN CRATE AND NOT A MODULE OF `vesl-core`.
+#
+# `vesl-nockup/sync.sh:312-314` copies vesl-core's crate trees — `tests/`
+# included — into a THIRD repo, and `vesl-core/.github/workflows/
+# vesl-core-sync.yml` asserts on every PR touching `crates/**` that the copy is
+# current. A fixture inside `crates/vesl-core/` would therefore leave that repo
+# stale, and red, on every regeneration. sync.sh's crate list is an explicit
+# `for c in nock-noun-rs nockchain-tip5-rs nockchain-client-rs vesl-core
+# vesl-checkpoint` enumeration, so a NEW crate is invisible to it by
+# construction and the gate stays green.
+#
+# ⛔ The cost, paid in the same commit: `vesl-core/.github/workflows/ci.yml`
+# ran `cargo test -p vesl-core`, which would never have run this crate. It now
+# runs `--workspace`. A target nothing names does not exist.
+
+[dependencies]
+nockchain-types = { path = "../../../nockchain/crates/nockchain-types" }
+nockchain-math = { path = "../../../nockchain/crates/nockchain-math" }
+vesl-core = { path = "../vesl-core" }
+anyhow = "1.0"
+bytes = "1"
+
+[dev-dependencies]
+serde_json = "1"
