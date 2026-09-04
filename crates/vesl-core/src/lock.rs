@@ -297,6 +297,178 @@ pub fn hold_lock(
     }))
 }
 
+/// Branch numbers of the buyer's DEPOSIT (`PLAN_B §C`), 1-based, as
+/// [`lock_merkle_proof`] takes them. ⛔ **These are part of the address**, on
+/// the same terms as [`HOLD_BRANCH_CAPTURE`]: renumbering them moves every
+/// deposit ever created, fail-closed and silent until a live spend.
+pub const DEPOSIT_BRANCH_RETURN_ON_CAPTURE: u64 = 1;
+/// See [`DEPOSIT_BRANCH_RETURN_ON_CAPTURE`].
+///
+/// ⛔⛔ **WE MUST NEVER ASK THE BUYER TO SIGN A DEPOSIT SPEND WHOSE OUTPUTS ARE
+/// NOT ITS OWN.** This branch is a 2-of-2 the buyer pre-signs when its hold
+/// confirms, so the platform holds a live buyer signature over a deposit spend
+/// for the life of the job. That is safe for exactly one reason: `sig-hash`
+/// pins the OUTPUTS, and the buyer's own wallet built them and they pay the
+/// buyer. Ask for a signature over any other output set and every branch of
+/// this note becomes ours (`PLAN_B §C`'s replay sweep).
+pub const DEPOSIT_BRANCH_RETURN_ON_DEATH: u64 = 2;
+/// See [`DEPOSIT_BRANCH_RETURN_ON_CAPTURE`]. Unspendable by construction, and
+/// carrying the job for the reason [`HOLD_BRANCH_PADDING`] does.
+pub const DEPOSIT_BRANCH_PADDING_JOB: u64 = 3;
+/// See [`DEPOSIT_BRANCH_RETURN_ON_CAPTURE`]. Pure padding: `%brn` alone.
+pub const DEPOSIT_BRANCH_PADDING: u64 = 4;
+
+/// Four-branch lock for the buyer's DEPOSIT — the deterrent note
+/// (`x402 PLAN_B §C`, ⚖️ RULED by the owner 2026-08-31).
+///
+/// ⚑ *In plain terms: the buyer parks a second, smaller pot beside its payment.
+/// It gets that pot back the moment we take our payment, because taking payment
+/// publishes the key that also unlocks the pot. If the buyer walks off without
+/// co-signing, the pot becomes money nobody on earth can move — us included. We
+/// gain nothing from a walk, so we can never have a reason to want one.*
+///
+/// ```text
+/// D1  RETURN-ON-CAPTURE  [%pkh m=1 {buyer_pay}]  AND  [%hax {h_k}]
+/// D2  RETURN-ON-DEATH    [%pkh m=2 {buyer_VOID, platform}]
+/// D3  padding            [%brn ~]  AND  [%hax {job_com}]
+/// D4  padding            [%brn ~]
+/// ```
+///
+/// ## ⭐⭐ THE TWO CONDITIONS THAT OPEN IT ARE BOTH THINGS **WE** MUST DO
+///
+/// **`D1`** opens when the capture publishes the delivery key's preimage —
+/// which [`hold_lock`]'s `B1` forces us to do **in order to be paid at all**.
+/// It is not a favour: there is no route to our own money that does not publish
+/// it. The buyer then watches the chain and opens `D1` **alone**, needing
+/// nothing from us — one 1-input, 1-output spend to itself.
+///
+/// **`D2`** opens when we agree the job died through nobody's fault and
+/// co-sign. ⛔ Nothing forces that one and this shape does not pretend
+/// otherwise: no lock can tell a dead job from a walked buyer (`PLAN_B §A3`),
+/// so the judgement is ours under every shape, and this is where it lives,
+/// visibly.
+///
+/// ⇒ If neither happens the deposit is spendable by nobody. ⛔ **It is not
+/// that we take it — it is GONE, for everyone.** That is what makes the
+/// deterrent safe to hold: it **deters and repairs nobody**, it **destroys
+/// value rather than redistributing it**, and the miner is still unpaid
+/// (`PLAN_B §A6`). ⛔ Its strength is the buyer's cost of capital, and ⚖️
+/// **sizing it is board row 7's** — 25 % of the cap is the ruled figure, and it
+/// lives in `x402_nockchain_crypto::cap`, never here.
+///
+/// ## ⛔⛔ WHY `D2` NAMES `buyer_VOID` AND NOT `buyer_pay` — the trigger, not the predicate
+///
+/// The states where a job dies without fault — `dead_letter`, `expired`,
+/// `closing_out`, `failed` — are **exactly** the states where the buyer has
+/// stopped watching. A `D2` naming the buyer's live payment key would need the
+/// signature that will not arrive: *the branch that insures against the buyer's
+/// absence would require the buyer to be present.* It is the same defect
+/// [`hold_lock`]'s `B2` closed, and the same fix — the buyer pre-signs one `D2`
+/// spend with a dedicated, discardable key **at the same moment it pre-signs
+/// the hold's `B2`**, so one exchange covers both notes and no new round trip
+/// exists (`PLAN_B §C2`).
+///
+/// ⚑ **`D2` carries no secret.** An earlier design gated it on a platform-held
+/// release secret `h_r`, published by the hold's void — but that void is itself
+/// a 2-of-2 needing the buyer. The predicate was right and the trigger was not.
+/// A plain 2-of-2 costs no new secret, no new wire field, and no conjunct on
+/// the hold's `B2`; `h_r` is deleted and must not be reintroduced.
+///
+/// ## ⛔ WHAT THIS LOCK DOES **NOT** SHARE WITH THE HOLD
+///
+/// No `%tim`, and no `h_sb`. The hold's `B3` lets the buyer recover **alone**
+/// after 24 h; the deposit deliberately has no such branch, because a deposit a
+/// walked buyer can simply wait out is not a deterrent. ⇒ `r_reclaim` and
+/// `h_sb` are **not deposit operands**, and every operand this function does
+/// take is already an operand of the hold — so **the deposit costs no new field
+/// on any wire.**
+///
+/// ## ⛔⛔ ITS ROOT MUST DIFFER FROM THE HOLD'S
+///
+/// The chain **merges** two seeds of one transaction that sit at the same lock
+/// root (`build-outputs`; and `vesl_core::settle::build_capture_seeds` refuses
+/// it on the spend side for the same reason). The hold and the deposit are
+/// created by ONE transaction, so an equal root would land them as a single
+/// note — and would let one output satisfy both of the platform's existence
+/// checks. It holds here by construction (`D1` is `m=1` where `B1` is `m=2`,
+/// and `D4` is a bare burn where `B3` is the reclaim), and the derivation sites
+/// assert it rather than assume it.
+///
+/// ## ⛔ THE THREE REFUSALS, AND WHICH ONE IS LOAD-BEARING
+///
+/// | | |
+/// |---|---|
+/// | `buyer_void_pkh == platform_pkh` | ⛔⛔ **LOAD-BEARING.** `D2` collapses through the z-set's silent dedup into a one-element set still demanding two signatures ⇒ the deposit could never be returned on death, and an honest buyer would forfeit it on an ordinary miner failure |
+/// | `buyer_void_pkh == buyer_pkh` | a NAMED CAUSE, not coverage. `D1` is `m=1` and its outputs are the buyer's, so a `D2` pre-signature replayed onto `D1` still pays the buyer. Refused because it is live on the HOLD and a reader must not have to work out that it is inert here |
+/// | `buyer_pkh == platform_pkh` | a NAMED CAUSE, not coverage. No deposit branch collapses on it — but a caller that hit it has confused two parties, and the hold refuses it one line away |
+///
+/// ⇒ the controls for the two named-cause rows assert the **message**; with
+/// `is_err()` they would be green for the wrong reason (`x402 records/S118`).
+pub fn deposit_lock(
+    buyer_pkh: Hash,
+    buyer_void_pkh: Hash,
+    platform_pkh: Hash,
+    h_k: Hash,
+    job_com: Hash,
+) -> anyhow::Result<Lock> {
+    if buyer_void_pkh == platform_pkh {
+        anyhow::bail!(
+            "the buyer's VOID key and the platform hash to the same address, so D2's 2-of-2 \
+             would collapse to a one-element set still demanding two signatures and the \
+             return-on-death would be unsatisfiable — leaving a deposit an honest buyer \
+             forfeits the first time a miner fails it. Refusing to build it."
+        );
+    }
+    if buyer_void_pkh == buyer_pkh {
+        anyhow::bail!(
+            "the buyer's VOID key is its PAYMENT key. On the deposit this is inert — D1 is a \
+             1-of-1 and every branch pays the buyer whatever is revealed — but it is a live \
+             defect on the HOLD, whose B2 would then accept the capture co-signature, and \
+             these two notes are built from one set of operands. Refusing to build it."
+        );
+    }
+    if buyer_pkh == platform_pkh {
+        anyhow::bail!(
+            "the buyer and the platform hash to the same address. No deposit branch collapses \
+             on this — D1 names the buyer alone and D2 names the void key — but the hold built \
+             from the same operands is unspendable, so a caller that reached here has \
+             confused the two parties. Refusing to build it."
+        );
+    }
+    // D1 — return on capture. The buyer ALONE, publishing the delivery key the
+    // capture already put on chain. ⛔ Conjunct order is part of the address;
+    // `PLAN_B §C` writes the signature check first, as `hold_lock` does.
+    let return_on_capture = SpendCondition::new(vec![
+        pkh_conjunct(1, vec![buyer_pkh.clone()])?,
+        LockPrimitive::Hax(Hax::new(vec![h_k])),
+    ]);
+    // D2 — return on death. A 2-of-2 with the buyer's DEDICATED key and
+    // nothing to publish, pre-signed in the hold's own exchange.
+    let return_on_death =
+        SpendCondition::new(vec![pkh_conjunct(2, vec![buyer_void_pkh, platform_pkh])?]);
+    // D3 — padding carrying the job, exactly as the hold's B4 does: a branch
+    // holding a `%brn` is unspendable whatever else sits beside it, so this is
+    // free capacity in the ADDRESS. ⛔ `Burn` stays FIRST.
+    let padding_job = SpendCondition::new(vec![
+        LockPrimitive::Burn,
+        LockPrimitive::Hax(Hax::new(vec![job_com])),
+    ]);
+    // D4 — the padding the chain's own `from-list` would have appended. ⛔ Two
+    // real branches pad to four; the arities are {1,2,4,8,16}.
+    let padding = SpendCondition::new(vec![LockPrimitive::Burn]);
+
+    Ok(Lock::V4(LockV4 {
+        p: LockV2 {
+            p: return_on_capture,
+            q: return_on_death,
+        },
+        q: LockV2 {
+            p: padding_job,
+            q: padding,
+        },
+    }))
+}
+
 /// A `%pkh` conjunct that cannot be built in either shape the chain accepts
 /// but nobody can use.
 ///
@@ -1058,5 +1230,213 @@ mod tests {
             pkh_conjunct(3, vec![pkh(1), pkh(2)]).is_err(),
             "m greater than the set size is unsatisfiable"
         );
+    }
+
+    /// `PLAN_B §C`'s shape, branch by branch. This is the address; if any of
+    /// these assertions has to be "updated", the deposit has moved and every
+    /// note ever created under the old shape is stranded.
+    #[test]
+    fn the_deposit_lock_is_plan_b_cs_four_branch_shape() {
+        let (buyer, buyer_void, platform, h_k, job_com) =
+            (pkh(10), pkh(15), pkh(20), pkh(30), pkh(40));
+        let lock = deposit_lock(
+            buyer.clone(),
+            buyer_void.clone(),
+            platform.clone(),
+            h_k.clone(),
+            job_com.clone(),
+        )
+        .expect("three distinct parties");
+        let branches = lock.flatten_spend_conditions();
+        assert_eq!(lock.spend_condition_count(), 4);
+
+        // D1 return-on-capture — the buyer ALONE, and the hashlock, in that
+        // order. ⛔ `m=1`: this is what the buyer opens by itself once the
+        // capture has put the key on chain, needing nothing from the platform.
+        let d1 = &branches[(DEPOSIT_BRANCH_RETURN_ON_CAPTURE - 1) as usize];
+        assert_eq!(d1.0.len(), 2);
+        match (&d1.0[0], &d1.0[1]) {
+            (LockPrimitive::Pkh(p), LockPrimitive::Hax(h)) => {
+                assert_eq!(p.m, 1, "D1 is the buyer alone");
+                assert_eq!(p.hashes.iter().count(), 1);
+                assert!(p.hashes.iter().any(|x| x == &buyer));
+                assert!(
+                    !p.hashes.iter().any(|x| x == &platform),
+                    "the platform is NOT named by D1: the buyer recovers alone"
+                );
+                assert_eq!(h.0.iter().count(), 1);
+                assert!(h.0.iter().any(|x| x == &h_k), "D1 names the delivery key");
+            }
+            other => panic!("D1 must be [%pkh m=1] AND [%hax], got {other:?}"),
+        }
+
+        // D2 return-on-death — the 2-of-2, and NOTHING to publish. ⛔ A
+        // hashlock here would make the platform publish the delivery key to
+        // hand back a deposit for a job that was never delivered.
+        let d2 = &branches[(DEPOSIT_BRANCH_RETURN_ON_DEATH - 1) as usize];
+        assert_eq!(d2.0.len(), 1, "D2 carries no second conjunct");
+        match &d2.0[0] {
+            LockPrimitive::Pkh(p) => {
+                assert_eq!(p.m, 2);
+                assert_eq!(p.hashes.iter().count(), 2);
+                assert!(
+                    p.hashes.iter().any(|x| x == &buyer_void),
+                    "D2 names the buyer's DEDICATED void key"
+                );
+                assert!(p.hashes.iter().any(|x| x == &platform));
+                assert!(
+                    !p.hashes.iter().any(|x| x == &buyer),
+                    "D2 must NOT name the buyer's payment key: the states where a job dies \
+                     are the states where that buyer has stopped watching"
+                );
+            }
+            other => panic!("D2 must be a bare [%pkh m=2], got {other:?}"),
+        }
+
+        // D3 — the burn FIRST, then the job. Order is part of the address.
+        let d3 = &branches[(DEPOSIT_BRANCH_PADDING_JOB - 1) as usize];
+        assert_eq!(d3.0.len(), 2);
+        assert!(matches!(d3.0[0], LockPrimitive::Burn), "the burn is FIRST");
+        match &d3.0[1] {
+            LockPrimitive::Hax(h) => assert!(h.0.iter().any(|x| x == &job_com)),
+            other => panic!("D3's second conjunct must be the job, got {other:?}"),
+        }
+
+        // D4 — pure padding.
+        let d4 = &branches[(DEPOSIT_BRANCH_PADDING - 1) as usize];
+        assert_eq!(d4.0.len(), 1);
+        assert!(matches!(d4.0[0], LockPrimitive::Burn));
+
+        // ⛔⛔ NO TIMELOCK ANYWHERE. The hold's B3 lets the buyer recover alone
+        // after 24 h; a deposit a walked buyer can wait out is not a deterrent,
+        // and adding a `%tim` here would delete the whole mechanism while every
+        // other assertion above stayed green.
+        for (i, b) in branches.iter().enumerate() {
+            assert!(
+                !b.0.iter().any(|p| matches!(p, LockPrimitive::Tim(_))),
+                "branch {} carries a timelock; the deposit has no wait-it-out branch",
+                i + 1
+            );
+        }
+    }
+
+    /// ⭐⭐ **THE HOLD AND THE DEPOSIT MUST NOT SHARE AN ADDRESS.**
+    ///
+    /// They are created by ONE transaction, and the chain MERGES two seeds of
+    /// one transaction that sit at the same lock root — so an equal root would
+    /// land them as a single note, and would let one output satisfy both of the
+    /// platform's existence checks. It holds by construction; this is the
+    /// tripwire that says so if either shape moves.
+    #[test]
+    fn the_deposit_does_not_stand_at_the_holds_address() {
+        let (b, v, p, k, sb, j) = (pkh(10), pkh(15), pkh(20), pkh(30), pkh(35), pkh(40));
+        let hold = hold_lock(
+            b.clone(),
+            v.clone(),
+            p.clone(),
+            k.clone(),
+            sb,
+            576,
+            j.clone(),
+        )
+        .expect("hold");
+        let deposit = deposit_lock(b, v, p, k, j).expect("deposit");
+        assert_ne!(
+            lock_root(&hold).unwrap(),
+            lock_root(&deposit).unwrap(),
+            "the hold and the deposit share an address: one transaction creating both would \
+             land ONE merged note, and one output would satisfy both admission checks"
+        );
+    }
+
+    /// Every branch can actually produce a merkle proof that folds to the root.
+    /// ⛔ Including the two unspendable ones: `%brn` makes a branch unspendable,
+    /// it does not make it unprovable, and a padding branch whose proof does
+    /// not fold means the tree is not the tree the address commits to.
+    #[test]
+    fn every_deposit_branch_is_provable() {
+        let lock = deposit_lock(pkh(10), pkh(15), pkh(20), pkh(30), pkh(40)).expect("deposit");
+        let root = lock_root(&lock).expect("deposit root");
+        for (branch, axis) in [
+            (DEPOSIT_BRANCH_RETURN_ON_CAPTURE, 12),
+            (DEPOSIT_BRANCH_RETURN_ON_DEATH, 13),
+            (DEPOSIT_BRANCH_PADDING_JOB, 14),
+            (DEPOSIT_BRANCH_PADDING, 15),
+        ] {
+            let proof = lock_merkle_proof(&lock, branch, 10, 1)
+                .unwrap_or_else(|e| panic!("branch {branch}: {e}"));
+            assert_eq!(proof.axis(), axis);
+            assert_eq!(proof.proof().root, root);
+        }
+    }
+
+    /// Change any operand and the address moves. A deposit built against one
+    /// delivery key cannot be opened by publishing another, and one built for
+    /// one job cannot sit at another job's address.
+    #[test]
+    fn the_deposit_address_binds_every_operand() {
+        let d = |b, v, p, k, j| deposit_lock(b, v, p, k, j).expect("deposit");
+        let base = d(pkh(10), pkh(15), pkh(20), pkh(30), pkh(40));
+        let r = |l: &Lock| lock_root(l).unwrap();
+        for (label, other) in [
+            ("buyer_pkh", d(pkh(11), pkh(15), pkh(20), pkh(30), pkh(40))),
+            (
+                "buyer_void_pkh",
+                d(pkh(10), pkh(16), pkh(20), pkh(30), pkh(40)),
+            ),
+            (
+                "platform_pkh",
+                d(pkh(10), pkh(15), pkh(21), pkh(30), pkh(40)),
+            ),
+            ("h_k", d(pkh(10), pkh(15), pkh(20), pkh(31), pkh(40))),
+            ("job_com", d(pkh(10), pkh(15), pkh(20), pkh(30), pkh(41))),
+        ] {
+            assert_ne!(
+                r(&base),
+                r(&other),
+                "{label} is an operand of the deposit's address"
+            );
+        }
+    }
+
+    /// ⛔⛔ Every colliding pair is refused **BY THE CAUSE IT NAMES**, not
+    /// merely by being a refusal. `pkh_conjunct`'s cardinality check already
+    /// refuses one of these as unsatisfiable, so an `is_err()` assertion would
+    /// stay green with the dedicated guards deleted — the shape this repo has
+    /// already paid for once (`x402 records/S118`).
+    #[test]
+    fn a_deposit_that_would_be_unreturnable_is_refused_by_its_own_cause() {
+        const KEYS: [&str; 3] = ["buyer_pkh", "buyer_void_pkh", "platform_pkh"];
+        let distinct = || [pkh(10), pkh(15), pkh(20)];
+        let ok =
+            |k: [Hash; 3]| deposit_lock(k[0].clone(), k[1].clone(), k[2].clone(), pkh(30), pkh(40));
+        assert!(ok(distinct()).is_ok(), "the honest trio builds");
+
+        let cause = |a: usize, b: usize| -> &'static str {
+            match (KEYS[a], KEYS[b]) {
+                ("buyer_pkh", "platform_pkh") => "buyer and the platform",
+                ("buyer_void_pkh", "platform_pkh") => "VOID key and the platform",
+                ("buyer_pkh", "buyer_void_pkh") => "VOID key is its PAYMENT key",
+                (x, y) => panic!(
+                    "no named cause for {x} == {y}: a key operand was added without a guard \
+                     and without a message that tells a reader which failure this is"
+                ),
+            }
+        };
+        for a in 0..KEYS.len() {
+            for b in (a + 1)..KEYS.len() {
+                let mut k = distinct();
+                k[b] = k[a].clone();
+                let e = ok(k)
+                    .expect_err(&format!("{} == {} must be refused", KEYS[a], KEYS[b]))
+                    .to_string();
+                assert!(
+                    e.contains(cause(a, b)),
+                    "{} == {} must be refused BY ITS OWN CAUSE, got: {e}",
+                    KEYS[a],
+                    KEYS[b]
+                );
+            }
+        }
     }
 }
