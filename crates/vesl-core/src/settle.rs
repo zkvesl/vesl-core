@@ -380,11 +380,19 @@ pub use self::build_capture_seeds as build_output_seeds;
 /// that lock root. This function is handed **one spend's** `Seeds` and can only
 /// hash those.
 ///
-/// For every transaction this fleet builds the two coincide, because we build
-/// **single-input** transactions and nothing can encode otherwise —
-/// `jam_spends_manual` refuses more than one spend
-/// (`vesl-core/src/tx_builder.rs:259-266`, `x402 XE-21`). ⇒ **not reachable
-/// today.**
+/// ⛔⛔ **THAT LIMIT EXPIRED ON 2026-09-07 (x402 board row 23), AND THIS
+/// FUNCTION IS NOW THE SINGLE-SPEND SPECIAL CASE RATHER THAN THE ONLY ARM.**
+/// This header read *"for every transaction this fleet builds the two coincide,
+/// because we build single-input transactions and nothing can encode otherwise
+/// — `jam_spends_manual` refuses more than one spend ⇒ not reachable today."*
+/// [`crate::tx_builder::jam_spends`] now encodes any spend count and the
+/// buyer's own builder is multi-input, so the mismatch below IS reachable.
+///
+/// ✅ **Use [`pin_output_source_across`] for anything multi-input.** This arm
+/// stays correct, and is what every single-input caller should keep calling:
+/// with one spend the two agree by construction. · MEASURED at consensus
+/// (`records/S134 §5`): with THIS function's per-spend value on a two-coin
+/// payment the merged note never lands and the node still answers "accepted".
 ///
 /// ⛔ **It becomes reachable the moment anything builds a MULTI-INPUT
 /// transaction whose two spends pay the same lock root.** Then each spend would
@@ -437,15 +445,98 @@ pub use self::build_capture_seeds as build_output_seeds;
 /// `output_source: None` below is therefore belt-and-braces, not load-bearing —
 /// it keeps the call honest if that ever changes.
 pub fn pin_output_source(seeds: &mut nockchain_types::tx_engine::v1::tx::Seeds) -> Result<()> {
+    pin_groups(seeds.0.iter_mut().collect())
+}
+
+/// ⭐⭐ **THE MULTI-INPUT PIN — x402 board row 23, closing `D-37`.** One
+/// grouping pass over the output sets of ALL the spends of one transaction.
+///
+/// ⚑ *In plain terms: when we pay one address out of two of our own coins, the
+/// chain treats the two payout lines as ONE payout and stamps them with a
+/// fingerprint of the pair. Stamping each line with a fingerprint of itself —
+/// which is what [`pin_output_source`] does, correctly, for a one-coin payment
+/// — makes the chain throw the whole payment away without saying why.*
+///
+/// ⛔⛔ **THIS IS THE FUNCTION THE PER-SPEND ONE COULD NOT BE.** Consensus
+/// builds its output accumulator ONCE, before the spend loop, and threads it
+/// across every spend (`tx-engine-1.hoon:2350`, `:2405`), keying on
+/// `lock-root.sed` alone (`:2364`); it then re-hashes the WHOLE merged group
+/// with every member's field stripped (`:2372-2376`). `validate:output`
+/// (`:1410-1419`) rejects if any member's claim differs from that, and
+/// `validate:tx` then refuses the entire transaction (`tx-engine.hoon:1349`).
+/// A helper handed one spend's `Seeds` can only ever hash those.
+///
+/// · MEASURED at consensus, `records/S133 §9.7`: two inputs paying two
+/// DISTINCT lock roots were accepted and both outputs landed; two inputs paying
+/// ONE shared lock root were reported **accepted** and the merged note **never
+/// landed**. The legs differ in exactly one thing, so the cause is the
+/// grouping.
+///
+/// ⛔⛔ **AND IT IS NOT A BLIND WIDENING, WHICH IS THE WHOLE DESIGN
+/// CONSTRAINT.** The group hashed here contains exactly the seeds **we
+/// authored**. A stranger who wraps our signed spends into a larger transaction
+/// and lands a seed on one of our lock roots makes consensus's group gain a
+/// member ⇒ consensus's hash moves ⇒ our claim no longer matches ⇒ the
+/// transaction is REFUSED. That is `XE-163`'s `X1`/`X3` measured at consensus,
+/// and it survives this change intact. A version that pinned "whatever ends up
+/// in the transaction" would agree with the tamper by construction and guard
+/// nothing — which is why this takes the sets WE assembled and never re-reads
+/// them from a submitted transaction.
+/// `a_strangers_seed_at_our_lock_root_still_breaks_the_group_pin` checks that
+/// as a value comparison rather than leaving it as this paragraph.
+///
+/// ⛔⛔ **CALL IT BEFORE ANY SPEND IS SIGNED.** `sig-hashable:seed` covers the
+/// field (`tx-engine-1.hoon:707-715`), so a pin written after a signature is a
+/// signature over a different object — and that failure is silent: the node
+/// acks the poke and discards the transaction. This entry point takes seed
+/// **sets** rather than a `Spends` precisely so it can be called at the only
+/// moment that is correct, when the witnesses do not exist yet.
+///
+/// ⚑ It **overwrites** any per-spend pin already present, and must: the shipped
+/// [`build_capture_seeds`] pins internally, so a multi-input builder reusing it
+/// arrives with per-spend values. Overwriting is safe because the hash strips
+/// the field first — the same normalisation `build-outputs` performs by hand.
+pub fn pin_output_source_across(
+    sets: Vec<&mut nockchain_types::tx_engine::v1::tx::Seeds>,
+) -> Result<()> {
+    pin_groups(sets.into_iter().flat_map(|s| s.0.iter_mut()).collect())
+}
+
+/// [`pin_output_source_across`] over an already-assembled `Spends`.
+///
+/// ⛔ Useful for a caller that holds a built transaction (a test, a re-pin, a
+/// probe). A **builder** should reach for [`pin_output_source_across`] instead:
+/// by the time a `Spends` exists its witnesses do, and a pin applied then is a
+/// pin applied after signing.
+pub fn pin_output_source_across_spends(
+    spends: &mut nockchain_types::tx_engine::v1::tx::Spends,
+) -> Result<()> {
+    use nockchain_types::tx_engine::v1::tx::Spend;
+    pin_groups(
+        spends
+            .0
+            .iter_mut()
+            .flat_map(|(_, sp)| match sp {
+                Spend::Legacy(s) => s.seeds.0.iter_mut(),
+                Spend::Witness(s) => s.seeds.0.iter_mut(),
+            })
+            .collect(),
+    )
+}
+
+/// The grouping pass itself — the one home all three entry points share
+/// (`XD-7`: one home, every consumer calls it, nobody restates it).
+///
+/// Groups by lock root, preserving first-seen order so the walk is
+/// deterministic. `Vec` rather than a map: a transaction has a handful of
+/// seeds, and `Hash` would need a `Hash` impl this crate does not control.
+fn pin_groups(mut all: Vec<&mut nockchain_types::tx_engine::v1::tx::Seed>) -> Result<()> {
     use nockchain_types::tx_engine::common::Source;
     use nockchain_types::tx_engine::v1::hashable::HashHashable;
     use nockchain_types::tx_engine::v1::tx::Seeds;
 
-    // Group by lock root, preserving first-seen order so the walk is
-    // deterministic. `Vec` rather than a map: a spend has a handful of seeds,
-    // and `Hash` would need a `Hash` impl this crate does not control.
     let mut groups: Vec<(nockchain_types::tx_engine::common::Hash, Vec<usize>)> = Vec::new();
-    for (i, seed) in seeds.0.iter().enumerate() {
+    for (i, seed) in all.iter().enumerate() {
         match groups.iter_mut().find(|(root, _)| root == &seed.lock_root) {
             Some((_, members)) => members.push(i),
             None => groups.push((seed.lock_root.clone(), vec![i])),
@@ -460,7 +551,7 @@ pub fn pin_output_source(seeds: &mut nockchain_types::tx_engine::v1::tx::Seeds) 
             members
                 .iter()
                 .map(|&i| {
-                    let mut s = seeds.0[i].clone();
+                    let mut s = all[i].clone();
                     s.output_source = None;
                     s
                 })
@@ -470,7 +561,7 @@ pub fn pin_output_source(seeds: &mut nockchain_types::tx_engine::v1::tx::Seeds) 
             .hash_digest()
             .map_err(|e| anyhow::anyhow!("output-source: hashing the lock-root group: {e}"))?;
         for &i in &members {
-            seeds.0[i].output_source = Some(Source {
+            all[i].output_source = Some(Source {
                 hash: hash.clone(),
                 is_coinbase: false,
             });
@@ -1495,6 +1586,190 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // ⭐⭐ ROW 23 — the MULTI-INPUT pin, and the tripwire it must not lose.
+    // -----------------------------------------------------------------------
+
+    /// ⭐⭐ Two spends paying ONE address get the GROUP's pin, not two
+    /// singletons — which is what `D-37` predicted and `records/S133 §9.7`
+    /// measured a node silently dropping.
+    ///
+    /// ⚑ The controls come first: without them "they are equal" is equally
+    /// consistent with a pin that hashes nothing.
+    #[test]
+    fn two_spends_at_one_lock_root_get_the_group_pin_not_two_singletons() {
+        // Two spends of two DIFFERENT input notes, each paying lock root 1.
+        let mut a = Seeds(vec![bare_seed(1, 10, 90), bare_seed(2, 5, 90)]);
+        let mut b = Seeds(vec![bare_seed(1, 20, 91), bare_seed(3, 5, 91)]);
+
+        let singleton_a = Seeds(vec![bare_seed(1, 10, 90)])
+            .hash_digest()
+            .expect("singleton a");
+        let group = Seeds(vec![bare_seed(1, 10, 90), bare_seed(1, 20, 91)])
+            .hash_digest()
+            .expect("cross-spend group");
+        assert_ne!(
+            singleton_a, group,
+            "the control: a singleton and the cross-spend pair must hash differently, or this              test could not tell a per-spend pin from a cross-spend one"
+        );
+
+        // The control that this is a REAL change: the per-spend helper gets it
+        // wrong here, and that wrongness is exactly D-37.
+        let mut per_spend = a.clone();
+        pin_output_source(&mut per_spend).expect("per-spend pin");
+        assert_eq!(
+            per_spend.0[0].output_source.clone().expect("pinned").hash,
+            singleton_a,
+            "the control: the per-spend helper pins the SINGLETON, which is the defect"
+        );
+
+        pin_output_source_across(vec![&mut a, &mut b]).expect("cross-spend pin");
+
+        let pa = a.0[0].output_source.clone().expect("a0 pinned");
+        let pb = b.0[0].output_source.clone().expect("b0 pinned");
+        assert_eq!(pa, pb, "the two spends' seeds at one root share one source");
+        assert_eq!(
+            pa.hash, group,
+            "and it is the CROSS-SPEND group's hash, not either singleton's"
+        );
+
+        // The seeds at their own distinct roots are untouched by the merge.
+        assert_ne!(
+            a.0[1].output_source.clone().expect("a1").hash,
+            pa.hash,
+            "a seed at a different lock root is a different output group"
+        );
+    }
+
+    /// ⭐⭐ **THE FIX IS NOT A BLIND WIDENING, CHECKED AS A VALUE COMPARISON.**
+    ///
+    /// `D-37` warns that pinning "the whole transaction's group" would agree
+    /// with a stranger's tampering by construction and guard nothing. The pin
+    /// this crate now writes spans exactly the seeds WE assembled, so a
+    /// stranger's seed at our lock root still moves consensus's group hash away
+    /// from our claim — `XE-163`'s `X1`/`X3`, which measured that refusal at
+    /// consensus.
+    ///
+    /// ⚑ The second half is the discriminator: it computes what a blind
+    /// widening WOULD have produced and shows it matching, so "our pin differs"
+    /// is a statement about this implementation rather than about arithmetic.
+    #[test]
+    fn a_strangers_seed_at_our_lock_root_still_breaks_the_group_pin() {
+        let mut ours_a = Seeds(vec![bare_seed(1, 10, 90)]);
+        let mut ours_b = Seeds(vec![bare_seed(1, 20, 91)]);
+        pin_output_source_across(vec![&mut ours_a, &mut ours_b]).expect("pin across ours");
+        let our_claim = ours_a.0[0].output_source.clone().expect("pinned").hash;
+
+        // A seed we did NOT author, at OUR lock root, in the same transaction.
+        let stranger = bare_seed(1, 7, 77);
+
+        // What consensus would compute over the whole merged group.
+        let consensus = Seeds(vec![
+            bare_seed(1, 10, 90),
+            bare_seed(1, 20, 91),
+            stranger.clone(),
+        ])
+        .hash_digest()
+        .expect("consensus group");
+
+        assert_ne!(
+            our_claim, consensus,
+            "⛔ the tripwire is GONE: our claim matches a group containing a seed we never              authored, so a stranger could land value on our output silently"
+        );
+
+        // The discriminator: a BLIND widening — one that pinned whatever ended
+        // up in the transaction — would have agreed with the tamper.
+        let blind = Seeds(vec![bare_seed(1, 10, 90), bare_seed(1, 20, 91), stranger])
+            .hash_digest()
+            .expect("blind group");
+        assert_eq!(
+            blind, consensus,
+            "the discriminator: a pin computed over the transaction as it ENDS UP would match              the tampered group exactly — that is the fix this one is not"
+        );
+    }
+
+    /// The two entry points must agree: pinning the seed sets before the
+    /// witnesses exist, and pinning an assembled `Spends`, are the same walk.
+    #[test]
+    fn pinning_across_seed_sets_and_across_spends_agree() {
+        use nockchain_types::tx_engine::common::{Name, Nicks};
+        use nockchain_types::tx_engine::v1::tx::{
+            LockMerkleProof, MerkleProof, PkhSignature, Spend, Spend1, SpendCondition, Spends,
+            Witness,
+        };
+        let mk = |n: u64, seeds: Seeds| {
+            let sc = SpendCondition::simple_pkh(root(n));
+            let r = sc.hash().expect("root");
+            let w = Witness::new(
+                LockMerkleProof::new_stub(
+                    sc,
+                    1,
+                    MerkleProof {
+                        root: r,
+                        path: vec![],
+                    },
+                ),
+                PkhSignature::new(vec![]),
+                vec![],
+            );
+            (
+                Name::new(root(n), root(n + 100)),
+                Spend::Witness(Spend1 {
+                    witness: w,
+                    seeds,
+                    fee: Nicks(0),
+                }),
+            )
+        };
+
+        let mut sa = Seeds(vec![bare_seed(1, 10, 90), bare_seed(2, 5, 90)]);
+        let mut sb = Seeds(vec![bare_seed(1, 20, 91)]);
+        let mut spends = Spends(vec![mk(7, sa.clone()), mk(8, sb.clone())]);
+
+        pin_output_source_across(vec![&mut sa, &mut sb]).expect("across sets");
+        pin_output_source_across_spends(&mut spends).expect("across spends");
+
+        let from_spends: Vec<_> = spends
+            .0
+            .iter()
+            .flat_map(|(_, sp)| match sp {
+                Spend::Witness(s) => s.seeds.0.clone(),
+                Spend::Legacy(s) => s.seeds.0.clone(),
+            })
+            .collect();
+        let from_sets: Vec<_> = sa.0.iter().chain(sb.0.iter()).cloned().collect();
+        assert_eq!(from_spends, from_sets, "the two entry points must agree");
+        assert!(
+            from_sets.iter().all(|s| s.output_source.is_some()),
+            "the control: vacuous unless the pin actually landed"
+        );
+    }
+
+    /// ⚑ The cross-spend pass must OVERWRITE a per-spend pin, because the
+    /// shipped `build_output_seeds` writes one internally — so a multi-input
+    /// builder that reuses it arrives with the wrong value already in place.
+    #[test]
+    fn the_cross_spend_pin_overwrites_a_per_spend_one() {
+        let mut a = Seeds(vec![bare_seed(1, 10, 90)]);
+        let mut b = Seeds(vec![bare_seed(1, 20, 91)]);
+        pin_output_source(&mut a).expect("per-spend first");
+        pin_output_source(&mut b).expect("per-spend first");
+        let stale = a.0[0].output_source.clone().expect("stale");
+
+        pin_output_source_across(vec![&mut a, &mut b]).expect("then across");
+        let fresh = a.0[0].output_source.clone().expect("fresh");
+        assert_ne!(
+            stale, fresh,
+            "the cross-spend pass left a per-spend value in place — a builder reusing              build_output_seeds would sign the wrong pin and the node would drop the payment"
+        );
+        assert_eq!(
+            fresh.hash,
+            Seeds(vec![bare_seed(1, 10, 90), bare_seed(1, 20, 91)])
+                .hash_digest()
+                .expect("group"),
+            "and the value it left is the cross-spend group's"
+        );
+    }
     /// Two seeds under DIFFERENT lock roots are different groups, so they must
     /// NOT share a value — the discrimination control for the test above.
     #[test]

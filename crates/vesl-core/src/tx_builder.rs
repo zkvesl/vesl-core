@@ -7,6 +7,7 @@
 use nockapp::NockApp;
 use nockapp::noun::slab::{NockJammer, NounSlab};
 use nockapp::wire::{SystemWire, Wire};
+use nockchain_math::zoon::zmap::ZMap;
 use nockchain_math::zoon::zset::ZSet;
 use nockchain_types::tx_engine::common::{Hash, Nicks};
 use nockchain_types::tx_engine::v1::tx::{Seeds, Spends};
@@ -83,7 +84,7 @@ pub async fn kernel_tx_id_with_timeout(
     spends: &Spends,
     timeout: std::time::Duration,
 ) -> anyhow::Result<Hash> {
-    let spends_jammed = jam_spends_manual(spends)?;
+    let spends_jammed = jam_spends(spends)?;
 
     let mut poke_slab: NounSlab = NounSlab::new();
     let tag = make_tas(&mut poke_slab, "tx-id").as_noun();
@@ -252,10 +253,94 @@ pub fn jam_seeds_manual(seeds: &Seeds) -> anyhow::Result<bytes::Bytes> {
     Ok(slab.jam())
 }
 
+/// JAM Spends by the canonical `ZMap` encoder — **any spend count.**
+///
+/// ⭐ x402 board row **23**. `kernel_tx_id` used to reach
+/// [`jam_spends_manual`], which hand-writes a one-element treap and refuses
+/// more than one spend — so the `%tx-id` kernel poke was single-input **by
+/// construction**, and the multi-input transactions `records/S133` put to a
+/// node had to compute their id through `RawTx::compute_id` instead.
+///
+/// ⚑ There is no dispatch here, unlike [`jam_seeds`], and the reason is
+/// MEASURED rather than assumed. `jam_seeds` keeps a manual arm because the
+/// canonical z-SET ordering copies each **item** through
+/// `OwnedBasedNoun::from_noun`, which recurses on the Rust stack — hence
+/// [`MAX_SEED_NOUN_DEPTH`]. A z-MAP orders on the **KEY ONLY**:
+/// `ZMapEntry::encode` calls `OrderedNoun::encode(&key)` and never touches the
+/// value (`nockchain-math/src/zoon/zmap.rs:140-149`). The key is a `Name` —
+/// two hashes, fixed shallow depth — so the multi-megabyte proof-carrying
+/// witness in the value never goes through that copy at all. ⇒ **the depth
+/// hazard does not transfer to spends, and this arm needs no bound.**
+///
+/// ⛔ It does NOT call `Spends::to_noun`, for the same reason
+/// [`jam_seeds_canonical`] avoids `Seeds::to_noun`: that impl swallows the
+/// ordering's error with `.expect("spends z-map should encode")`
+/// (`nockchain-types/src/tx_engine/v1/tx.rs:277-281`), so an unrepresentable
+/// key would PANIC inside a transaction builder. Calling
+/// `ZMap::try_from_entries` here makes it an `Err` carrying the cause.
+pub fn jam_spends(spends: &Spends) -> anyhow::Result<bytes::Bytes> {
+    jam_spends_canonical(spends)
+}
+
+/// JAM Spends via the canonical `ZMap` treap — the encoder `Spends` already
+/// carries, reached without the `.expect()` its `NounEncode` impl performs.
+///
+/// ⛔⛔ **IT REFUSES TWO SPENDS OF THE SAME INPUT NOTE, AND THAT REFUSAL IS
+/// LOAD-BEARING RATHER THAN TIDY.** `ZMap::try_insert` returns `Ok(added)` and
+/// `ZMap::try_from_entries` **discards that flag**
+/// (`nockchain-math/src/zoon/zmap.rs:266-283`), so two entries under one `Name`
+/// silently collapse to one — `merge_duplicate` keeps the incoming value
+/// (`zmap.rs:161-168`). A builder that handed this two spends of one note would
+/// get a jam, a `%tx-id`, and a signature for a transaction **it did not
+/// build**, with one spend gone and no error anywhere. Consensus would then
+/// refuse it for a conservation failure that names nothing. ⇒ fail closed here,
+/// where the cause is still in hand.
+pub fn jam_spends_canonical(spends: &Spends) -> anyhow::Result<bytes::Bytes> {
+    anyhow::ensure!(!spends.0.is_empty(), "spends must not be empty");
+    refuse_duplicate_input_names(spends)?;
+    let map = ZMap::try_from_entries(spends.0.clone()).map_err(|err| {
+        anyhow::anyhow!("the canonical z-map encoder cannot order these spends: {err}")
+    })?;
+    let mut slab: NounSlab<NockJammer> = NounSlab::new();
+    let noun = map.to_noun(&mut slab);
+    slab.set_root(noun);
+    Ok(slab.jam())
+}
+
+/// Refuse a `Spends` naming one input note twice.
+///
+/// ⚑ Compares the `Name`s by their encoded noun rather than by `PartialEq` on
+/// the struct, so it agrees with the z-map's own notion of "the same key"
+/// rather than with Rust's.
+fn refuse_duplicate_input_names(spends: &Spends) -> anyhow::Result<()> {
+    let mut seen: Vec<bytes::Bytes> = Vec::with_capacity(spends.0.len());
+    for (i, (name, _)) in spends.0.iter().enumerate() {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let noun = name.to_noun(&mut slab);
+        slab.set_root(noun);
+        let key = slab.jam();
+        if let Some(first) = seen.iter().position(|k| k == &key) {
+            anyhow::bail!(
+                "spends {first} and {i} name the same input note; the z-map would silently \
+                 collapse them and this transaction would not be the one you built"
+            );
+        }
+        seen.push(key);
+    }
+    Ok(())
+}
+
 /// JAM Spends into a noun on a plain NounSlab, bypassing the ZMap machinery.
 ///
 /// For a single-spend z-map, the noun structure is `[[key value] 0 0]`
 /// (treap node with null children).
+///
+/// ⛔ **NO LONGER ON ANY LIVE PATH IN THIS CRATE** (x402 board row 23):
+/// `kernel_tx_id` now goes through [`jam_spends`]. It is kept and exported
+/// because `vesl-agent/hull/src/tx_builder.rs:24` imports it and pins it
+/// byte-identical to the canonical encoder at `:276` — which is the very
+/// measurement that makes the switch above safe. `jam_spends_canonical_is_byte_identical_to_manual_for_one_spend`
+/// re-states that pin HERE, where this crate's own CI can see it.
 pub fn jam_spends_manual(spends: &Spends) -> anyhow::Result<bytes::Bytes> {
     anyhow::ensure!(!spends.0.is_empty(), "spends must not be empty");
     anyhow::ensure!(
@@ -335,10 +420,132 @@ pub fn bytes_to_atom(slab: &mut NounSlab, bytes: &[u8]) -> nockvm::noun::Noun {
 
 #[cfg(test)]
 mod tests {
+    use nockchain_types::tx_engine::common::Name;
     use nockchain_types::tx_engine::v1::note::{NoteData, NoteDataEntry};
-    use nockchain_types::tx_engine::v1::tx::Seed;
+    use nockchain_types::tx_engine::v1::tx::{Seed, Spend};
 
     use super::*;
+
+    // -----------------------------------------------------------------------
+    // ROW 23 — the canonical SPENDS encoder.
+    // -----------------------------------------------------------------------
+
+    /// Build a spend carrying one seed, under the input note `Name(a, b)`.
+    fn spend_named(a: u64, b: u64, gift: u64) -> (Name, Spend) {
+        use nockchain_types::tx_engine::v1::tx::{
+            LockMerkleProof, MerkleProof, PkhSignature, Spend1, SpendCondition, Witness,
+        };
+        let sc = SpendCondition::simple_pkh(Hash::from_limbs(&[a, a, a, a, a]));
+        let root = sc.hash().expect("lock root");
+        let witness = Witness::new(
+            LockMerkleProof::new_stub(
+                sc,
+                1,
+                MerkleProof {
+                    root: root.clone(),
+                    path: vec![],
+                },
+            ),
+            PkhSignature::new(vec![]),
+            vec![],
+        );
+        let seeds = Seeds(vec![Seed {
+            output_source: None,
+            lock_root: root,
+            note_data: NoteData::new(vec![]),
+            gift: Nicks(gift as usize),
+            parent_hash: Hash::from_limbs(&[b, b, b, b, b]),
+        }]);
+        let name = Name::new(
+            Hash::from_limbs(&[a, a + 1, a + 2, a + 3, a + 4]),
+            Hash::from_limbs(&[b, b + 1, b + 2, b + 3, b + 4]),
+        );
+        (
+            name,
+            Spend::Witness(Spend1 {
+                witness,
+                seeds,
+                fee: Nicks(0),
+            }),
+        )
+    }
+
+    /// ⭐⭐ THE PIN THAT MAKES THE `kernel_tx_id` SWITCH SAFE.
+    ///
+    /// `kernel_tx_id` reached `jam_spends_manual` until board row 23 and now
+    /// reaches [`jam_spends`]. That is only a no-op for the single-spend shapes
+    /// this fleet has been posting if the two encoders agree BYTE FOR BYTE.
+    ///
+    /// ⚑ `vesl-agent/hull/src/tx_builder.rs:276` has a twin of this assertion,
+    /// and that is exactly why this one exists: **a pin's home is what its own
+    /// CI can see.** vesl-core's suite cannot run vesl-agent's.
+    #[test]
+    fn jam_spends_canonical_is_byte_identical_to_manual_for_one_spend() {
+        let spends = Spends(vec![spend_named(1, 2, 100)]);
+        let manual = jam_spends_manual(&spends).expect("manual");
+        let canonical = jam_spends_canonical(&spends).expect("canonical");
+        assert_eq!(
+            manual.to_vec(),
+            canonical.to_vec(),
+            "the canonical z-map encoder must reproduce the hand-written one-element treap, or \
+             switching kernel_tx_id onto it changes every single-input transaction id we post"
+        );
+        assert_eq!(
+            jam_spends(&spends).expect("dispatch").to_vec(),
+            canonical.to_vec(),
+            "the dispatcher must be the canonical arm"
+        );
+    }
+
+    /// The capability itself: more than one spend encodes at all.
+    #[test]
+    fn jam_spends_canonical_encodes_two_spends() {
+        let spends = Spends(vec![spend_named(1, 2, 100), spend_named(3, 4, 200)]);
+        assert!(
+            jam_spends_manual(&spends).is_err(),
+            "the control: the manual encoder is what refused multi-input, so this test is \
+             vacuous unless it still refuses"
+        );
+        let jam = jam_spends(&spends).expect("two spends must encode");
+        assert!(!jam.is_empty());
+
+        // It is the SET we built, not a truncation: decode it back.
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let root = slab.cue_into(jam).expect("the jam must cue back");
+        slab.set_root(root);
+        let space = slab.noun_space();
+        let back = Spends::from_noun(&slab_root(&slab), &space).expect("decode");
+        assert_eq!(back.0.len(), 2, "both spends must survive the round trip");
+    }
+
+    /// ⛔⛔ Two spends of ONE input note must be refused, not silently merged.
+    ///
+    /// `ZMap::try_from_entries` discards `try_insert`'s `added` flag, so
+    /// without this guard the second entry overwrites the first and the caller
+    /// signs a transaction with one spend missing — and no error anywhere.
+    #[test]
+    fn jam_spends_refuses_two_spends_of_the_same_input_note() {
+        let (name, spend_a) = spend_named(1, 2, 100);
+        let (_, spend_b) = spend_named(1, 2, 999);
+        let spends = Spends(vec![(name.clone(), spend_a), (name, spend_b)]);
+
+        let err = jam_spends(&spends).expect_err("a repeated input name must be refused");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("same input note"),
+            "the refusal must name its cause, got: {msg}"
+        );
+
+        // The control: without the guard this would have collapsed silently to
+        // ONE entry rather than erroring.
+        let collapsed = ZMap::try_from_entries(spends.0.clone()).expect("z-map");
+        assert_eq!(
+            collapsed.into_entries().len(),
+            1,
+            "the control: the z-map really does silently collapse the pair, which is what \
+             makes the guard above load-bearing rather than tidy"
+        );
+    }
 
     /// Verify `jam_seeds_manual` output matches `Seeds::to_noun` -> JAM.
     #[test]
