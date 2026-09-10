@@ -13,36 +13,33 @@ name: JAM Determinism
 # meaningful. If CI bytes still diverge on ubuntu-latest, treat that as a
 # portability finding to report, not as a kernel-source regression.
 #
-# HONK_REV is NOCK_PIN plus the honk fixes not yet merged upstream
-# (nockchain/nockchain PR #146 + cwd-relative spot paths), staged on the
-# sobchek fork. When those land upstream, point the checkout back at
-# nockchain/nockchain and fold HONK_REV into NOCK_PIN.
+# ⚑⚑ 2026-09-10: THE FORK IS RETIRED AND THIS FILE'S OWN EXIT CONDITION HAS FIRED.
+# The block that stood here said: "When those land upstream, point the checkout back
+# at nockchain/nockchain and fold HONK_REV into NOCK_PIN."  They landed — all eight
+# nockcloud fixes (PR #146's axis + wide-`=/`, AND the cwd-relative spot paths this
+# job's path-independence premise rests on) rode in on nockchain/nockchain PR 153,
+# squash f4fe1a8f, 2026-08-30.  · VERIFIED BY SOURCE CONTENT, not by history: a squash
+# rewrites every SHA, so `git log fork..upstream` reports dozens of "ours-only"
+# commits whether or not a line is missing, and grepping the squash message proves
+# nothing because the message LISTS what it squashed.  Record: zkML records/S24.
 #
-# ⛔ NOT MERGEABLE UNTIL 26b146fe IS PUSHED TO sobchek/nockchain.
-# 2026-08-01: HONK_REV moves to nockcloud's arena/seminoun-DAG branch
-# (ea6a8f34) with the cwd-relative spot commit 82ab7bff cherry-picked on top
-# (= 26b146fe). Measured before bumping — all four kernels still reproduce
-# scripts/CHECKSUMS.sha256 byte-for-byte, from two different checkout paths,
-# so this is a compiler swap with NO artifact change and no checksum bump.
+# ⛔⛔ THE KERNEL BYTES MOVE WITH THIS BUMP, AND NOT BECAUSE OF THE COMPILER.
+# · MEASURED 2026-09-10, four kernels x two trees x two compilers:
+#     tree 26b146fe + fork honk == tree 26b146fe + upstream honk   (byte-identical)
+#     tree 2bcb0b9d + fork honk == tree 2bcb0b9d + upstream honk   (byte-identical)
+#     but tree 26b146fe != tree 2bcb0b9d
+#   ⇒ the COMPILER SWAP IS BYTE-NEUTRAL; what moves the bytes is the hoon TREE, which
+#   this job takes from the same checkout (NOCK_HOME below) and which differs by 48
+#   files between the fork rev and the upstream pin.
 #
-# Two reasons to move, in order:
-#   1. CORRECTNESS. The old 82ab7bff predates nockcloud's axis and wide-`=/`
-#      fixes and FAILS both of honk's own regression assets. vesl-core's
-#      kernels don't reach those constructs today, and unlike zkML's gate.sh
-#      there is no tripwire here that would tell us if they started to.
-#   2. forge-kernel compiles 9.3% faster with 13% less peak RSS; guard and
-#      settle are unchanged (+0.9%, ~50 ms).
-# Full record: zkML docs/honk/ARENA-DAG-BENCHMARK.md.
+# ⇒ scripts/CHECKSUMS.sha256 MUST BE BUMPED, in a dedicated commit, from THIS JOB'S
+#   OWN OUTPUT — deliberately not from a local run.  · MEASURED: a local checkout does
+#   NOT reproduce the current committed checksums even at the current HONK_REV, so a
+#   locally-baked value would be unverifiable.  Read the `actual:` lines from the first
+#   red run here and commit those, with a reviewer explanation.
 #
-# ⚑ Without the 82ab7bff cherry-pick this branch is PATH-DEPENDENT: measured,
-#   the same source at two different absolute paths yields different bytes,
-#   which is exactly the failure that had this gate disabled 2026-05-25.
-#
-# Local equivalent: scripts/check-jam.sh (required by the pre-push hook).
-#
-# NOCK_PIN (mirrored from vesl-nockup/sync.sh) still pins the nockchain
-# tree for every other consumer; HONK_REV's tree is identical — the extra
-# commits touch only the compiler crates.
+# NOCK_PIN still pins the nockchain tree for every other consumer.  It is NOT used by
+# this job — the hoon tree comes from the HONK_REV checkout below.
 
 on:
   push:
@@ -52,7 +49,7 @@ on:
 
 env:
   NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
-  HONK_REV: 26b146fe1322f3c832a544ae3dc75712c507cf00
+  HONK_REV: 2bcb0b9dfd190f17252205afd1c8a067048a1ad9
 
 jobs:
   jam-determinism:
@@ -66,7 +63,7 @@ jobs:
       - name: Checkout nockchain (honk compiler rev)
         uses: actions/checkout@v4
         with:
-          repository: sobchek/nockchain
+          repository: nockchain/nockchain
           ref: ${{ env.HONK_REV }}
           path: nockchain
 
