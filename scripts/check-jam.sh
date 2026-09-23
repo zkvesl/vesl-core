@@ -8,7 +8,8 @@
 # the class of bug that a "harmless" Hoon cleanup can introduce when nobody
 # notices the STARK subject shifted.
 #
-# Covers the kernels whose JAM assets live in vesl-core:
+# Covers the kernels whose JAM assets live in vesl-core (compiled through
+# their hoon/lib/ symlinks — see the note at the honk invocation below):
 #   guard-kernel.hoon  → assets/guard.jam
 #   mint-kernel.hoon   → assets/mint.jam
 #   settle-kernel.hoon → assets/settle.jam
@@ -68,7 +69,13 @@ fi
 # -- Verify each kernel -------------------------------------------------------
 status=0
 for kernel in guard mint settle forge; do
-    src="protocol/lib/${kernel}-kernel.hoon"
+    # Compile through hoon/lib/, not protocol/lib/.  The two spellings
+    # reach the same file (hoon/lib/*.hoon are symlinks into protocol/lib/)
+    # but they do not produce the same bytes: an entry INSIDE the dependency
+    # directory gets a dep-relative %spot path, one outside it does not.
+    # Inside is the spelling honk and hoonc agree on byte-for-byte, so this
+    # gate can be re-run against either compiler.  See CONTRIBUTING.
+    src="hoon/lib/${kernel}-kernel.hoon"
     if [[ ! -f "$src" ]]; then
         echo "error: $src missing." >&2
         status=1
@@ -82,8 +89,9 @@ for kernel in guard mint settle forge; do
         continue
     fi
 
-    # honk emits cwd-relative source paths, so the bytes are reproducible
-    # from any checkout location — that is what makes this gate meaningful.
+    # honk emits dependency-relative source paths for an entry inside the
+    # deps dir, so the bytes are reproducible from any checkout location —
+    # that is what makes this gate meaningful.
     rm -f out.jam
     if ! honk --new --output out.jam --prelude hoon/common/hoon.hoon "$src" hoon >/dev/null 2>&1; then
         echo "FAIL ${kernel}: honk exited non-zero." >&2
