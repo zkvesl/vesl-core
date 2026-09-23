@@ -17,7 +17,7 @@ on:
 # ships a compatible release.
 env:
   NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
-  VESL_WALLET_PIN: eb28bbed1a78f3c0e55e1f8170015eea18c75538
+  VESL_WALLET_PIN: 71e1eef93076b2ad0f2ad6320905bc8a306267c2
 
 jobs:
   check-pins:
