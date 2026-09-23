@@ -40,4 +40,5 @@ else
     echo "  trivial.hoon -> $NOCK_HOME/hoon/trivial.hoon"
 fi
 
-echo "Done. You can now compile with: hoonc protocol/lib/vesl-kernel.hoon hoon/"
+echo "Done. You can now compile with:"
+echo "  honk --new --output out.jam --prelude hoon/common/hoon.hoon hoon/lib/<name>-kernel.hoon hoon"

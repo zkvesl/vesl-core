@@ -90,11 +90,17 @@ production.
 Regen + commit flow:
 
 ```bash
-hoonc --ephemeral protocol/lib/<name>-kernel.hoon hoon/
+honk --new --output out.jam --prelude hoon/common/hoon.hoon hoon/lib/<name>-kernel.hoon hoon
 mv out.jam assets/<name>.jam
 cd assets && sha256sum guard.jam mint.jam settle.jam forge.jam > ../scripts/CHECKSUMS.sha256
 scripts/check-jam.sh    # must return all-green before committing
 ```
+
+Compile through `hoon/lib/`, not `protocol/lib/`. The symlink reaches
+the same source, but only an entry inside the dependency directory gets
+a dep-relative `%spot` path — the spelling honk and hoonc agree on
+byte-for-byte. Outside it, hoonc bakes an absolute build path and the
+two can never match.
 
 Commit the JAM regen as a dedicated `sync kernel JAM artifacts with
 source` commit, separate from the Hoon edit. The reviewer needs the

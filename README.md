@@ -71,10 +71,10 @@ Kernel JAMs are built with **honk**, the native Hoon compiler:
 
 ```bash
 cargo install --locked --force --path ../nockchain/crates/honk --bin honk
-honk --new --output out.jam --prelude hoon/common/hoon.hoon protocol/lib/<name>-kernel.hoon hoon
+honk --new --output out.jam --prelude hoon/common/hoon.hoon hoon/lib/<name>-kernel.hoon hoon
 ```
 
-honk is the primary compiler here because its output bytes are reproducible from any checkout location. `hoonc` still works for cross-checks, but it bakes absolute build paths into the JAM, so its bytes are machine-dependent — never regenerate a committed JAM with it.
+The entry is `hoon/lib/`, not `protocol/lib/`, and the difference is load-bearing. Both paths reach the same file — `hoon/lib/*.hoon` are symlinks — but an entry inside the dependency directory gets a dep-relative `%spot` path, and one outside it does not. Inside, honk and hoonc produce the same bytes; outside, hoonc bakes an absolute build path and they never can. honk stays the compiler of record because its bytes are reproducible from any checkout location; the shared spelling just means `hoonc` is usable as a real cross-check instead of a machine-dependent one.
 
 The four JAMs in `assets/` are what actually ship: each `kernels/*` crate embeds one via `include_bytes!` and panics at boot if the hash drifts. After editing any `protocol/lib/*-kernel.hoon`, regenerate and run `scripts/check-jam.sh`, which verifies each JAM against `scripts/CHECKSUMS.sha256`. CI gates the same assertion on every PR.
 
