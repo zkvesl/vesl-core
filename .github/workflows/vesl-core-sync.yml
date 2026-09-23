@@ -22,11 +22,12 @@ on:
     paths:
       - 'crates/**'
 
-env:
-  # vesl-core/hoon/{common,dat,jams} are gitignored symlinks into a
-  # sibling nockchain checkout; sync.sh's cp -rL requires them. Mirror
-  # the canonical pin used by vesl-core/ci.yml.
-  NOCK_PIN: fe46f4e3a0ce9532288e9cf3a3fb7e94bf9cba1f
+# ⚑ This workflow declares no workflow-level `env`, and in particular no
+# NOCK_PIN.  A workflow-level env of that name reaches the sync.sh step,
+# where sync.sh's own `NOCK_PIN="${NOCK_PIN:-...}"` takes it as an
+# override and rewrites every template git-dep away from its canonical
+# value.  vesl-nockup owns its nockchain pin; this workflow must not
+# have an opinion about it.  Every rev below is derived, not restated.
 
 jobs:
   sync-verify:
@@ -51,7 +52,7 @@ jobs:
           ref: dev
           path: vesl-nockup
 
-      - name: Extract vesl-wallet pin from vesl-nockup sync.sh
+      - name: Extract sibling revs from their source-of-truth files
         id: pins
         run: |
           # vesl-nockup/sync.sh's canonical VESL_WALLET_PIN default is
@@ -67,6 +68,21 @@ jobs:
           echo "wallet_pin=$wallet_pin" >> "$GITHUB_OUTPUT"
           echo "resolved VESL_WALLET_PIN=$wallet_pin from vesl-nockup/sync.sh"
 
+          # Which nockchain rev the sibling checkout below sits at, and so
+          # which Hoon tree lands in vesl-nockup's bundle: vesl-core's
+          # hoon/{common,dat,jams} are symlinks into it and sync.sh's
+          # cp -rL follows them.  That tree is the one honk compiles, so
+          # it tracks HONK_REV — read from jam-determinism.yml rather than
+          # restated here, for the same reason as the wallet pin above.
+          honk_rev=$(grep -oE 'HONK_REV: [a-f0-9]{40}' \
+            vesl-core/.github/workflows/jam-determinism.yml | grep -oE '[a-f0-9]{40}$')
+          if [[ -z "$honk_rev" ]]; then
+            echo "could not extract HONK_REV from vesl-core/.github/workflows/jam-determinism.yml" >&2
+            exit 1
+          fi
+          echo "honk_rev=$honk_rev" >> "$GITHUB_OUTPUT"
+          echo "resolved HONK_REV=$honk_rev from vesl-core/jam-determinism.yml"
+
       - name: Checkout vesl-wallet at sync.sh's canonical pin
         uses: actions/checkout@v4
         with:
@@ -74,14 +90,14 @@ jobs:
           ref: ${{ steps.pins.outputs.wallet_pin }}
           path: vesl-wallet
 
-      - name: Checkout nockchain (sibling, at NOCK_PIN)
+      - name: Checkout nockchain (sibling, at HONK_REV)
         # vesl-core/hoon/{common,dat,jams} are symlinks resolved against
         # this checkout; without it sync.sh's realpath check fails with
         # "hoon/common does not resolve into a nockchain/hoon tree".
         uses: actions/checkout@v4
         with:
           repository: nockchain/nockchain
-          ref: ${{ env.NOCK_PIN }}
+          ref: ${{ steps.pins.outputs.honk_rev }}
           path: nockchain
 
       - name: Materialize vesl-core's hoon symlinks
