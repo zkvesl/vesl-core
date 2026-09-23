@@ -79,7 +79,7 @@ fn h(n: u64) -> Hash {
 
 /// A seed with empty note-data, exactly as `examples/support/devnet.rs:248-256`
 /// builds one.
-fn seed_to(lock_root: Hash, gift: u64, parent_hash: Hash) -> Seed {
+pub fn seed_to(lock_root: Hash, gift: u64, parent_hash: Hash) -> Seed {
     Seed {
         output_source: None,
         lock_root,
