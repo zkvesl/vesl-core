@@ -38,7 +38,7 @@ use nockchain_types::tx_engine::v1::tx::{
 /// that ruling the escrow was posted at job-posting time, before any
 /// miner existed, so branch 1 could only pin a deploy constant — and a
 /// settling miner had to ask the platform's key to sign the spend it had
-/// itself composed (`DV-10`). The escrow is now created AFTER the audit,
+/// itself composed (`DV-10`). The escrow is now created AFTER the hand-in check,
 /// bound to the miner who served, so this argument is the pkh the miner
 /// declared inside what it signed, and the miner alone can spend.
 ///
