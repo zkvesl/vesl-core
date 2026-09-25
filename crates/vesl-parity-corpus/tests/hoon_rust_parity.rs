@@ -5,7 +5,9 @@
 //! answer sheet the blockchain produced, and this test redoes the sums in Rust
 //! and compares. If they ever stop matching, a buyer would sign a number the
 //! chain throws away without saying why — a node acks the invalid payment and
-//! discards it silently.*
+//! discards it silently. Since `vesl-engine` `STEP4.md` ruling 46 the sheet also
+//! holds the chain's hash of four sample notes — the parent a spend names — and
+//! `the_rust_note_hash_still_matches_the_kernels_own_answer` redoes that too.*
 //!
 //! Design: `zkML/docs/plans/x402/records/S117` `§12.2`.
 //!
@@ -326,4 +328,67 @@ fn the_corpus_reaches_both_seed_encoders() {
         canonical > 0,
         "no shape reaches jam_seeds_canonical — one encoder is untested"
     );
+}
+
+/// ⛔ **THE NOTES THIS CORPUS COVERS, WRITTEN OUT** — `DECLARED`'s rule, for
+/// `vesl_parity_corpus::note_shapes`.
+const DECLARED_NOTES: [&str; 4] = [
+    "note-opaque-notedata", "note-other-origin", "note-plain", "note-typed-lock-notedata",
+];
+
+/// ⚖️ `vesl-engine` `plans/port/STEP4.md` ruling 46 — the Rust `hash:nnote`
+/// (`vesl_core::note_hash`), from which every spend's parent hash now comes,
+/// against the kernel's own `%note-hash` answer recorded in the sheet.
+///
+/// ⚑ *In plain terms: every output of a payment points back at the coin it spent,
+/// and the chain refuses a wrong pointer. This redoes the pointer in Rust and
+/// checks it against the chain program's own answer.*
+#[test]
+fn the_rust_note_hash_still_matches_the_kernels_own_answer() {
+    let fixture = load();
+    let rows = fixture
+        .get("notes")
+        .and_then(|s| s.as_object())
+        .unwrap_or_else(|| panic!("NO VERDICT: the answer sheet has no `notes` object — {REGEN}"));
+    let shapes = vesl_parity_corpus::note_shapes().expect("the note corpus builds");
+
+    let declared: BTreeSet<&str> = DECLARED_NOTES.iter().copied().collect();
+    let in_corpus: BTreeSet<&str> = shapes.iter().map(|s| s.name).collect();
+    let in_sheet: BTreeSet<&str> = rows.keys().map(|k| k.as_str()).collect();
+    assert_eq!(
+        declared, in_corpus,
+        "the note corpus and DECLARED_NOTES have diverged"
+    );
+    assert_eq!(
+        declared, in_sheet,
+        "the sheet and DECLARED_NOTES have diverged — {REGEN}"
+    );
+
+    let mut seen: Vec<(&str, Hash)> = Vec::new();
+    for shape in &shapes {
+        let row = rows.get(shape.name).expect("checked above");
+        let want = digest(row, shape.name, "note_hash");
+        let got = vesl_core::note_hash::note_hash(&shape.note).expect("the Rust note hash");
+        assert_eq!(
+            got, want,
+            "note {:?}: the Rust `hash:nnote` DIFFERS from the kernel's. Every spend built from \
+             it names a parent consensus refuses (`%v1-spend-1-parent-hash-failed`).",
+            shape.name
+        );
+        // The defect ruling 46 closed, as a standing control: the value every
+        // builder used to name is not the hash.
+        assert_ne!(
+            want, shape.note.name.last,
+            "note {:?}: the hash is not the last name",
+            shape.name
+        );
+        seen.push((shape.name, want));
+    }
+    // Distinct inputs, distinct answers — a sheet of one repeated value would pass
+    // every per-row comparison against a constant-returning mirror.
+    for (i, (a, ha)) in seen.iter().enumerate() {
+        for (b, hb) in seen.iter().skip(i + 1) {
+            assert_ne!(ha, hb, "notes {a:?} and {b:?} recorded the same hash");
+        }
+    }
 }

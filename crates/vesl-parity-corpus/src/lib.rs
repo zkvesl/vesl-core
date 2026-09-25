@@ -4,7 +4,10 @@
 //! number a buyer signs when it pays, and the identity of the payment. We keep
 //! a pure-Rust copy of both calculations — that copy is what lets a wallet pay
 //! without booting a 15-second kernel. Nothing checked that the two still
-//! agree. This module holds the payments we compare them on.*
+//! agree. This module holds the payments we compare them on — and, since
+//! `vesl-engine` `STEP4.md` ruling 46, the notes we compare a third calculation
+//! on: a note's hash, which every payment spending it must name as its parent
+//! ([`note_shapes`]).*
 //!
 //! `nockchain-types` states the problem itself and offers no mechanism for it:
 //! *"Keep this direct hashing path in sync with Hoon"*
@@ -418,4 +421,71 @@ pub fn shapes() -> Result<Vec<Shape>> {
     });
 
     Ok(out)
+}
+
+/// One NOTE whose `hash:nnote` the two implementations are compared on.
+///
+/// ⚖️ `vesl-engine` `plans/port/STEP4.md` ruling 46: every seed's `parent_hash` is
+/// now `vesl_core::note_hash::note_hash` of the spent note — a Rust copy of
+/// `hash:nnote` (`nockchain/hoon/common/tx-engine-1.hoon:594-606`), which
+/// consensus compares from `parent-hash-phase` on. A drift here is a spend the
+/// chain refuses by name, so the copy is pinned like the sig-hash and the tx-id.
+///
+/// ⛔ Inputs only — the module header's rule. The kernel's answer is recorded by
+/// tier 2 (`%note-hash`), the Rust one computed by tier 1.
+#[derive(Debug, Clone)]
+pub struct NoteShape {
+    /// Stable identity: the key in the frozen fixture's `notes` object.
+    pub name: &'static str,
+    /// The note, exactly as a balance read returns it.
+    pub note: nockchain_types::tx_engine::v1::note::NoteV1,
+    /// One line saying what this shape exists to catch.
+    pub why: &'static str,
+}
+
+/// The notes the `hash:nnote` mirror is compared on.
+///
+/// ⚑ Every field `hash:nnote` folds is varied by at least one shape against the
+/// first, and note-data covers both an opaque and a typed entry — the two
+/// encodings `NoteDataValue::hash_digest` dispatches between.
+pub fn note_shapes() -> Result<Vec<NoteShape>> {
+    use nockchain_types::tx_engine::common::BlockHeight;
+    use nockchain_types::tx_engine::v1::note::NoteV1;
+    let note = |origin: u64, first: u64, last: u64, data: NoteData, assets: usize| {
+        NoteV1::new(
+            BlockHeight(Belt(origin)),
+            Name::new(h(first), h(last)),
+            data,
+            Nicks(assets),
+        )
+    };
+    Ok(vec![
+        NoteShape {
+            name: "note-plain",
+            note: note(4, 21, 22, NoteData::new(Vec::new()), 1_000_000),
+            why: "a plain coin: no note-data — what a funding coin or a change output is",
+        },
+        NoteShape {
+            name: "note-other-origin",
+            note: note(126_000, 21, 22, NoteData::new(Vec::new()), 1_000_000),
+            why: "the same coin landed on another page: the origin page is an operand, and a \
+                  name-only builder cannot know it",
+        },
+        NoteShape {
+            name: "note-opaque-notedata",
+            note: note(
+                4,
+                21,
+                22,
+                NoteData::new(vec![opaque_entry("vint-ic", 7)]),
+                99_750,
+            ),
+            why: "an escrow-shaped note: opaque note-data folds into the hash",
+        },
+        NoteShape {
+            name: "note-typed-lock-notedata",
+            note: note(4, 21, 22, NoteData::new(vec![typed_lock_entry()?]), 99_750),
+            why: "a %lock-typed entry — the other NoteDataValue encoding",
+        },
+    ])
 }

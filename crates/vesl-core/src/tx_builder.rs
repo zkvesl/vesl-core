@@ -100,6 +100,38 @@ pub async fn kernel_tx_id_with_timeout(
     extract_hash_from_effect(&effects, "tx-id")
 }
 
+/// Compute `hash:nnote` of a note by poking the Hoon kernel's `%note-hash`
+/// handler — the chain's own answer, which [`crate::note_hash::note_hash`] (the
+/// Rust mirror every spend's parent hash now comes from) is pinned against in
+/// `vesl-parity-corpus` (`vesl-engine` `plans/port/STEP4.md` ruling 46).
+///
+/// Sends `[%note-hash note-jam]` where `note-jam` is the JAM'd `nnote` noun.
+pub async fn kernel_note_hash_with_timeout(
+    app: &mut NockApp,
+    note: &nockchain_types::tx_engine::v1::note::NoteV1,
+    timeout: std::time::Duration,
+) -> anyhow::Result<Hash> {
+    let note_jammed = {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let noun = note.to_noun(&mut slab);
+        slab.set_root(noun);
+        slab.jam()
+    };
+
+    let mut poke_slab: NounSlab = NounSlab::new();
+    let tag = make_tas(&mut poke_slab, "note-hash").as_noun();
+    let note_atom = bytes_to_atom(&mut poke_slab, &note_jammed);
+    let cmd = T(&mut poke_slab, &[tag, note_atom]);
+    poke_slab.set_root(cmd);
+
+    let effects = tokio::time::timeout(timeout, app.poke(SystemWire.to_wire(), poke_slab))
+        .await
+        .map_err(|_| anyhow::anyhow!("note-hash poke timed out after {}s", timeout.as_secs()))?
+        .map_err(|e| anyhow::anyhow!("note-hash poke failed: {e:?}"))?;
+
+    extract_hash_from_effect(&effects, "note-hash")
+}
+
 // ---------------------------------------------------------------------------
 // Manual noun builders — work around NockStack issue in ZSet/z-map
 // ---------------------------------------------------------------------------

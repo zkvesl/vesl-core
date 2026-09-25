@@ -1,8 +1,26 @@
 {
-  "_": "The KERNEL's own sig-hash and tx-id per corpus shape. Generated — never hand-edited. See vesl-core/crates/vesl-parity-corpus/tests/hoon_rust_parity.rs.",
+  "_": "The KERNEL's own sig-hash and tx-id per corpus shape, and its hash:nnote per corpus note. Generated — never hand-edited. See vesl-core/crates/vesl-parity-corpus/tests/hoon_rust_parity.rs.",
   "generated_by": "vesl-labs/services/chain/examples/regen_parity_fixture.rs",
-  "kernel_jam_sha256": "2df579b635d826f9c975037cc94646dfee6c45d9274458b6c3878b57918cb93c",
+  "kernel_jam_sha256": "ef261853bcdec495fae1bb763cb001d17627185dc36f1351178e40c65f3169c1",
   "nockchain_rev": "0626e6ab5a2aeb8313a052d878792c6b575669bd",
+  "notes": {
+    "note-opaque-notedata": {
+      "note_hash": "2p5Bsx12ajbvs7DaFziosBN3hYNBD7oKm8DEgkahBMFF9wKDzeGZdtw",
+      "why": "an escrow-shaped note: opaque note-data folds into the hash"
+    },
+    "note-other-origin": {
+      "note_hash": "6moay5AcNRopbL2TPeJdykKQo1zSr4fZN59aELznbkfskW4ZDkezFV3",
+      "why": "the same coin landed on another page: the origin page is an operand, and a name-only builder cannot know it"
+    },
+    "note-plain": {
+      "note_hash": "A8egZsSXmML9taoSRnuutajcDrrr9V5bNJDwc4K8LWp6ope6gGh6QgX",
+      "why": "a plain coin: no note-data — what a funding coin or a change output is"
+    },
+    "note-typed-lock-notedata": {
+      "note_hash": "2LyLqHy7T6YYXKd7WtRFLo4ruHui3uT8zTaCguZHN2c1MnZFZggnPaa",
+      "why": "a %lock-typed entry — the other NoteDataValue encoding"
+    }
+  },
   "shapes": {
     "capture-3out-opaque-notedata": {
       "sig_hash": "5vzxvqyHD8hwBxrZWhwWMCPGhTGZPMrWTiS7dS64tH3ewNcsWmeUjMV",

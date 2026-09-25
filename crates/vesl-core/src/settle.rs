@@ -249,6 +249,12 @@ pub struct CaptureOutput {
 ///
 /// ⛔ What this does NOT check, because it cannot see it: that `input_value` is
 /// really what the input note holds. The caller reads that from the chain.
+///
+/// ⛔⛔ Nor that `parent_hash` is right — and every caller in the fleet passed the
+/// input's `name.last`, which is wrong. It must be the input note's `hash:nnote`
+/// ([`crate::note_hash::note_hash`] of the landed note); consensus refuses anything
+/// else from `parent-hash-phase` on (`%v1-spend-1-parent-hash-failed`, · MEASURED on
+/// a fakenet past activation — `vesl-engine` `plans/port/STEP4.md` ruling 46).
 pub fn build_capture_seeds(
     outputs: &[CaptureOutput],
     parent_hash: &nockchain_types::tx_engine::common::Hash,

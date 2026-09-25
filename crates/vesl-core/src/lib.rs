@@ -16,6 +16,7 @@ pub mod graft_pokes;
 pub mod guard;
 pub mod lock;
 pub mod mint;
+pub mod note_hash;
 pub mod noun_builder;
 pub mod peek;
 pub mod poke;
