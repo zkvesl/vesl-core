@@ -7,7 +7,9 @@
 //! chain throws away without saying why — a node acks the invalid payment and
 //! discards it silently. Since `vesl-engine` `STEP4.md` ruling 46 the sheet also
 //! holds the chain's hash of four sample notes — the parent a spend names — and
-//! `the_rust_note_hash_still_matches_the_kernels_own_answer` redoes that too.*
+//! `the_rust_note_hash_still_matches_the_kernels_own_answer` redoes that too; since
+//! step 4 (§10) it holds the ADDRESS of the escrow flow's three notes, and
+//! `the_escrow_notes_addresses_still_match_the_kernels_own_answer` redoes those.*
 //!
 //! Design: `zkML/docs/plans/x402/records/S117` `§12.2`.
 //!
@@ -52,9 +54,10 @@ use nockchain_types::tx_engine::v1::tx::RawTx;
 /// `hoon_consts_kat` pattern (`vesl-labs/services/chain/src/lib.rs:126-173`,
 /// *"why it is written out rather than counted"*). Names, not a length, so the
 /// failure says which shape appeared or vanished.
-const DECLARED: [&str; 6] = [
+const DECLARED: [&str; 7] = [
     "capture-3out-opaque-notedata", "capture-3out-pinned", "capture-3out-typed-lock-notedata",
-    "capture-3out-unpinned", "hold-post-3seed-pinned", "single-seed-notedata-manual-jam",
+    "capture-3out-unpinned", "funding-post-2seed-pinned", "job-capture-3seed-pinned",
+    "single-seed-notedata-manual-jam",
 ];
 
 const REGEN: &str = "regenerate it by booting the kernel:\n    \
@@ -389,6 +392,51 @@ fn the_rust_note_hash_still_matches_the_kernels_own_answer() {
     for (i, (a, ha)) in seen.iter().enumerate() {
         for (b, hb) in seen.iter().skip(i + 1) {
             assert_ne!(ha, hb, "notes {a:?} and {b:?} recorded the same hash");
+        }
+    }
+}
+
+/// ⛔ **THE LOCKS THIS CORPUS COVERS, WRITTEN OUT** — `DECLARED`'s rule, for
+/// `vesl_parity_corpus::lock_shapes`.
+const DECLARED_LOCKS: [&str; 3] = ["lock-funding", "lock-job", "lock-provider-note"];
+
+/// ⚖️ `vesl-engine` `plans/port/STEP4.md` §10 — the escrow flow's three notes, as
+/// `vesl_core::job_locks` composes them, against the kernel's own `hash:lock`.
+///
+/// ⚑ *In plain terms: the address the buyer's money, the job's money and the
+/// provider's pay each sit at is worked out by our code; this checks the chain's own
+/// program works out the same address from the same lock.*
+#[test]
+fn the_escrow_notes_addresses_still_match_the_kernels_own_answer() {
+    let fixture = load();
+    let rows = fixture
+        .get("locks")
+        .and_then(|s| s.as_object())
+        .unwrap_or_else(|| panic!("NO VERDICT: the answer sheet has no `locks` object — {REGEN}"));
+    let shapes = vesl_parity_corpus::lock_shapes().expect("the lock corpus builds");
+
+    let declared: BTreeSet<&str> = DECLARED_LOCKS.iter().copied().collect();
+    let in_corpus: BTreeSet<&str> = shapes.iter().map(|s| s.name).collect();
+    let in_sheet: BTreeSet<&str> = rows.keys().map(|k| k.as_str()).collect();
+    assert_eq!(declared, in_corpus, "the lock corpus and DECLARED_LOCKS have diverged");
+    assert_eq!(declared, in_sheet, "the sheet and DECLARED_LOCKS have diverged — {REGEN}");
+
+    let mut seen: Vec<(&str, Hash)> = Vec::new();
+    for shape in &shapes {
+        let row = rows.get(shape.name).expect("checked above");
+        let want = digest(row, shape.name, "lock_root");
+        let got = vesl_core::lock::lock_root(&shape.lock).expect("the Rust lock root");
+        assert_eq!(
+            got, want,
+            "lock {:?}: the Rust `hash:lock` DIFFERS from the kernel's. Money sent to the Rust \
+             address sits at a note whose lock the chain does not recognise.",
+            shape.name
+        );
+        seen.push((shape.name, want));
+    }
+    for (i, (a, ha)) in seen.iter().enumerate() {
+        for (b, hb) in seen.iter().skip(i + 1) {
+            assert_ne!(ha, hb, "locks {a:?} and {b:?} recorded the same address");
         }
     }
 }

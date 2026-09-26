@@ -1,7 +1,21 @@
 {
-  "_": "The KERNEL's own sig-hash and tx-id per corpus shape, and its hash:nnote per corpus note. Generated — never hand-edited. See vesl-core/crates/vesl-parity-corpus/tests/hoon_rust_parity.rs.",
+  "_": "The KERNEL's own sig-hash and tx-id per corpus shape, its hash:nnote per corpus note, and its hash:lock per corpus lock. Generated — never hand-edited. See vesl-core/crates/vesl-parity-corpus/tests/hoon_rust_parity.rs.",
   "generated_by": "vesl-labs/services/chain/examples/regen_parity_fixture.rs",
-  "kernel_jam_sha256": "ef261853bcdec495fae1bb763cb001d17627185dc36f1351178e40c65f3169c1",
+  "kernel_jam_sha256": "c844e5ebfd00713da8c354c0e40c6bb5a9343698c38491b79d24e6a4edfd3848",
+  "locks": {
+    "lock-funding": {
+      "lock_root": "7DN4A73hFZTbVfC2mUB8zmKHt8e58b6g3q2NpZsCzurubH85BVsxwLi",
+      "why": "the buyer's funding note: a 2-of-2, a 1-of-1 behind a relative minimum, the facts beside a burn, and padding"
+    },
+    "lock-job": {
+      "lock_root": "AAu56xGRbVqt6BgYWNwkqhRJ8DBUFyFueajpfAR431ZwCt29uLzGmBq",
+      "why": "the job note: a 2-of-2 behind a relative MAXIMUM — a %tim leg no earlier lock of ours set"
+    },
+    "lock-provider-note": {
+      "lock_root": "5xubbWG1feDFky6wctf4Ni9STEPmrjHQqyuwh6MoStnQ8T9Xk2QBVER",
+      "why": "the provider note: pay after the window, clawback inside it, three facts in the reserved branch"
+    }
+  },
   "nockchain_rev": "0626e6ab5a2aeb8313a052d878792c6b575669bd",
   "notes": {
     "note-opaque-notedata": {
@@ -17,7 +31,7 @@
       "why": "a plain coin: no note-data — what a funding coin or a change output is"
     },
     "note-typed-lock-notedata": {
-      "note_hash": "2LyLqHy7T6YYXKd7WtRFLo4ruHui3uT8zTaCguZHN2c1MnZFZggnPaa",
+      "note_hash": "C6z8CTbT4w2FZWU7PK9hpq2Ys481ofgN5aXpMsaFeGxbyuc1n6uZmfo",
       "why": "a %lock-typed entry — the other NoteDataValue encoding"
     }
   },
@@ -33,8 +47,8 @@
       "why": "today's shipped capture, straight out of build_capture_seeds"
     },
     "capture-3out-typed-lock-notedata": {
-      "sig_hash": "3jK2ucgh94TUcRXW51tdm7XaGdXzKtDMP4dJLYiBNEFdzHV7FGHmja9",
-      "tx_id": "8aqxWu67hBC82763PNZESYPnmZNRRu7ddRKU4M1mEWvUfX9TpaL5bjj",
+      "sig_hash": "BPxkHvwB4PHA86LogRkeM5cuvVuHstZpZBfc3kNTNzxET3z2S8bDAZJ",
+      "tx_id": "4ekchoE5TT8gtZCDUgtH2S8Gn9YJyrF98taoGS84b1XBEhjjrrKX61g",
       "why": "a %lock-typed entry — the coverage gap nockchain-types' own TODO names"
     },
     "capture-3out-unpinned": {
@@ -42,10 +56,15 @@
       "tx_id": "DdWJwaxH65MRuiQ4qSPnUUofnZG95V6cLFwtjVuTZRmBrVwV11xB341",
       "why": "the pre-row-19 value: what every seed looked like before we pinned output-source"
     },
-    "hold-post-3seed-pinned": {
-      "sig_hash": "FdGdgdqBmGscF8mKW5tfaK6QdGm5dbyrjt8XsWDUiH3F1Sq1vjUqCZ",
-      "tx_id": "CkGvkNP8K1wbmwhnyzCQBJVMRXDWQaL4re19w8SeRjp8vhGx1R46jUh",
-      "why": "what a buyer's wallet posts: the hold, the deposit beside it, and the change"
+    "funding-post-2seed-pinned": {
+      "sig_hash": "9Meycw8sfqx3K1SivwTwp5q3n8pDb6nuMNGzGrBzX6fG8nbzj9e4Kui",
+      "tx_id": "8puFYtUCYiAtjCuje5xCtC7FZ2FVxrQg7TbWThrpc43UkhmK2c28By6",
+      "why": "what a buyer's wallet posts: one funding note naming the job's facts, and the change"
+    },
+    "job-capture-3seed-pinned": {
+      "sig_hash": "3B5nBQKNKUuENMuh7D2qpqCHJq6jRJ9jsHjHe9MATtTZmyNQb6xWSXx",
+      "tx_id": "2xD7g3QPR1yJELKGxztptTtNENEbtQdZg8PA6b86E1Gz4EUXNdQ6u3t",
+      "why": "the escrow flow's capture: the provider note with its three facts, the commission, and the buyer's change"
     },
     "single-seed-notedata-manual-jam": {
       "sig_hash": "67gukKFhReTVEEKR7s9GtCCCoPKEoXzuANW8SN1EeqpqYsQ9cT2zJnF",

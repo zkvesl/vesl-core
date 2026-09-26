@@ -223,31 +223,55 @@ fn opaque_entry(key: &str, payload: u64) -> NoteDataEntry {
 /// `typed_payload_noun` (`note.rs:233-…`) rather than the raw branch, so it is
 /// a different encoding, not a differently-shaped payload.
 fn typed_lock_entry() -> Result<NoteDataEntry> {
-    Ok(NoteDataEntry::lock(demo_hold_lock()?))
+    Ok(NoteDataEntry::lock(demo_job_lock()?))
 }
 
-/// The buyer's four-branch hold, from the shipped builder, on fixed operands.
-fn demo_hold_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
-    vesl_core::lock::hold_lock(
-        pkh_of(&signer(11))?,
-        pkh_of(&signer(12))?,
-        pkh_of(&signer(23))?,
-        h(41),
-        h(42),
-        576,
-        h(43),
-    )
+/// The escrow flow's three parties, on fixed keys (`STEP4.md` ruling 42).
+fn demo_parties() -> Result<vesl_core::job_locks::JobParties> {
+    Ok(vesl_core::job_locks::JobParties {
+        buyer_j: pkh_of(&signer(11))?,
+        platform: pkh_of(&signer(23))?,
+        provider: pkh_of(&signer(12))?,
+    })
 }
 
-/// The buyer's deposit note, from the shipped builder, on the same operands.
-fn demo_deposit_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
-    vesl_core::lock::deposit_lock(
-        pkh_of(&signer(11))?,
-        pkh_of(&signer(12))?,
-        pkh_of(&signer(23))?,
-        h(41),
-        h(43),
-    )
+fn demo_facts() -> vesl_core::job_locks::JobFacts {
+    vesl_core::job_locks::JobFacts {
+        order_digest: h(41),
+        weight_root: h(42),
+    }
+}
+
+/// The buyer's FUNDING note, from the shipped builder, on fixed operands.
+fn demo_funding_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
+    let p = demo_parties()?;
+    vesl_core::job_locks::funding_lock(&p.buyer_j, &p.platform, 96, &demo_facts())
+}
+
+/// The JOB note, from the shipped builder. ⚑ It carries a `%tim` with a relative
+/// MAXIMUM, which no lock this fleet built before step 4 did.
+fn demo_job_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
+    vesl_core::job_locks::job_lock(&demo_parties()?, 24, &demo_facts())
+}
+
+/// The PROVIDER note, from the shipped builder, at the live window (1.152, ruling 43).
+fn demo_provider_note_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
+    vesl_core::job_locks::provider_note_lock(&demo_parties()?, 1_152, &demo_facts(), &h(43))
+}
+
+/// A digest carried as note-data the way the provider note carries its three facts —
+/// ⚖️ a Hoon list of five field elements (`plans/port/PROGRAM.md`, ruled 2026-09-19).
+/// ⚑ The encoder itself lives in `vesl-agent-protocol` (`job_note_data.rs`), above this
+/// crate; this is the same noun, built here on fixed operands.
+fn digest_entry(key: &str, d: &Hash) -> NoteDataEntry {
+    let mut noun = OwnedBasedNoun::Atom(Belt(0));
+    for limb in d.to_array().iter().rev() {
+        noun = OwnedBasedNoun::Cell(Box::new(OwnedBasedNoun::Atom(Belt(*limb))), Box::new(noun));
+    }
+    NoteDataEntry {
+        key: key.to_string(),
+        value: NoteDataValue::Noun(noun),
+    }
 }
 
 fn pkh_of(k: &Signer) -> Result<Hash> {
@@ -371,53 +395,75 @@ pub fn shapes() -> Result<Vec<Shape>> {
         why: "forces jam_seeds_manual, the encoder the three-seed shapes never reach",
     });
 
-    // ── 6 · the buyer's posting spend: hold + deposit + change ──────────────
-    // ✅ **THE RESIDUAL HERE IS CLOSED (2026-09-04), AND THE FIX WAS A NAME.**
-    // This comment read: *"there is NO shipped builder for these seeds … which
-    // `vesl-core` cannot call without a dependency cycle"*, and the block below
-    // mirrored the two-step by hand — the `XD-7` one-home defect `records/S124`
-    // `§5` filed. Both halves were wrong about the cause. The builder existed,
-    // in this very crate's dependency, as `build_capture_seeds`; only its name
-    // claimed it was a capture's, while the close-out's refund and both void
-    // paths already called it. It is now also `build_output_seeds`, and the
-    // buyer's real posting (`vesl-x402/.../wallet-client/src/lib.rs`) calls it
-    // too. ⇒ this corpus entry no longer mirrors production; it IS production's
-    // builder, on fixed operands.
-    //
-    // ⛔ The dependency never ran the way that sentence claimed: `vesl-x402`
-    // depends on `vesl-core`, so nothing here ever had to reach the other way.
+    // ── 6 · the buyer's funding spend: the funding note + change ────────────
+    // ⚖️ `STEP4.md` ruling 42's first box, through production's builder
+    // (`build_output_seeds`), on fixed operands. It replaced the retired hold +
+    // deposit posting row.
     out.push(Shape {
-        name: "hold-post-3seed-pinned",
-        seeds: {
-            let parent = h(9);
-            vesl_core::settle::build_output_seeds(
-                &[
-                    vesl_core::settle::OutputLine {
-                        lock_root: vesl_core::lock::lock_root(&demo_hold_lock()?)?,
-                        note_data: NoteData::new(Vec::new()),
-                        amount: 900_000,
-                    },
-                    vesl_core::settle::OutputLine {
-                        lock_root: vesl_core::lock::lock_root(&demo_deposit_lock()?)?,
-                        note_data: NoteData::new(Vec::new()),
-                        amount: 60_000,
-                    },
-                    vesl_core::settle::OutputLine {
-                        lock_root: h(8),
-                        note_data: NoteData::new(Vec::new()),
-                        amount: 39_750,
-                    },
-                ],
-                &parent,
-                1_000_000,
-                250,
-            )?
-        },
+        name: "funding-post-2seed-pinned",
+        seeds: vesl_core::settle::build_output_seeds(
+            &[
+                vesl_core::settle::OutputLine {
+                    lock_root: vesl_core::lock::lock_root(&demo_funding_lock()?)?,
+                    note_data: NoteData::new(Vec::new()),
+                    amount: 960_000,
+                },
+                vesl_core::settle::OutputLine {
+                    lock_root: h(8),
+                    note_data: NoteData::new(Vec::new()),
+                    amount: 39_750,
+                },
+            ],
+            &h(9),
+            1_000_000,
+            250,
+        )?,
         fee: 250,
         signer: signer(11),
         is_coinbase: true,
         input_last: h(5),
-        why: "what a buyer's wallet posts: the hold, the deposit beside it, and the change",
+        why: "what a buyer's wallet posts: one funding note naming the job's facts, and the change",
+    });
+
+    // ── 7 · the capture: provider note (with its facts) + commission + change ─
+    // ⚖️ Rulings 41–44: the capture pays out AT the serve. The provider note
+    // carries the three facts as note-data under the job note's OWN version key,
+    // each digest a list of five field elements.
+    out.push(Shape {
+        name: "job-capture-3seed-pinned",
+        seeds: vesl_core::settle::build_output_seeds(
+            &[
+                vesl_core::settle::OutputLine {
+                    lock_root: vesl_core::lock::lock_root(&demo_provider_note_lock()?)?,
+                    note_data: NoteData::new(vec![
+                        opaque_entry("vjob-v", 1),
+                        digest_entry("vint-od", &h(41)),
+                        digest_entry("vint-wr", &h(42)),
+                        digest_entry("vint-rr", &h(43)),
+                    ]),
+                    amount: 855_000,
+                },
+                vesl_core::settle::OutputLine {
+                    lock_root: h(2),
+                    note_data: NoteData::new(Vec::new()),
+                    amount: 45_000,
+                },
+                vesl_core::settle::OutputLine {
+                    lock_root: h(8),
+                    note_data: NoteData::new(Vec::new()),
+                    amount: 99_750,
+                },
+            ],
+            &h(9),
+            1_000_000,
+            250,
+        )?,
+        fee: 250,
+        signer: signer(11),
+        is_coinbase: true,
+        input_last: h(5),
+        why: "the escrow flow's capture: the provider note with its three facts, the \
+              commission, and the buyer's change",
     });
 
     Ok(out)
@@ -486,6 +532,48 @@ pub fn note_shapes() -> Result<Vec<NoteShape>> {
             name: "note-typed-lock-notedata",
             note: note(4, 21, 22, NoteData::new(vec![typed_lock_entry()?]), 99_750),
             why: "a %lock-typed entry — the other NoteDataValue encoding",
+        },
+    ])
+}
+
+/// One LOCK whose `hash:lock` the two implementations are compared on — the
+/// escrow flow's three notes (`vesl-engine` `plans/port/STEP4.md` §10).
+///
+/// ⚑ Their roots are computed on the Rust side by `nockchain-types`' own hashing,
+/// but the COMPOSITION — which primitives, in which order, under which arity — is
+/// ours (`vesl_core::job_locks`), and a `%tim` with a relative maximum is a shape
+/// no lock this fleet built before used. The kernel's `%lock-root` is the chain's
+/// answer.
+#[derive(Debug, Clone)]
+pub struct LockShape {
+    /// Stable identity: the key in the frozen fixture's `locks` object.
+    pub name: &'static str,
+    /// The lock, exactly as `vesl_core::job_locks` builds it.
+    pub lock: nockchain_types::tx_engine::v1::tx::Lock,
+    /// One line saying what this shape exists to catch.
+    pub why: &'static str,
+}
+
+/// The locks the escrow flow's addresses are compared on.
+pub fn lock_shapes() -> Result<Vec<LockShape>> {
+    Ok(vec![
+        LockShape {
+            name: "lock-funding",
+            lock: demo_funding_lock()?,
+            why: "the buyer's funding note: a 2-of-2, a 1-of-1 behind a relative minimum, \
+                  the facts beside a burn, and padding",
+        },
+        LockShape {
+            name: "lock-job",
+            lock: demo_job_lock()?,
+            why: "the job note: a 2-of-2 behind a relative MAXIMUM — a %tim leg no earlier \
+                  lock of ours set",
+        },
+        LockShape {
+            name: "lock-provider-note",
+            lock: demo_provider_note_lock()?,
+            why: "the provider note: pay after the window, clawback inside it, three facts \
+                  in the reserved branch",
         },
     ])
 }

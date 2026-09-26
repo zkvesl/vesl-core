@@ -14,6 +14,7 @@ pub mod config;
 pub mod fee;
 pub mod graft_pokes;
 pub mod guard;
+pub mod job_locks;
 pub mod lock;
 pub mod mint;
 pub mod note_hash;
@@ -79,9 +80,15 @@ pub use graft_pokes::validate::{
     Rule as ValidateRule, build_validate_clear_poke, build_validate_init_poke,
 };
 pub use guard::{Guard, GuardError};
+pub use job_locks::{
+    FUNDING_BRANCH_FAST, FUNDING_BRANCH_PADDING, FUNDING_BRANCH_RECOVER, FUNDING_BRANCH_TAG,
+    JOB_BRANCH_CAPTURE, JOB_BRANCH_FAST, JOB_BRANCH_RECOVER, JOB_BRANCH_TAG, JobFacts, JobParties,
+    PROVIDER_BRANCH_CLAWBACK, PROVIDER_BRANCH_PADDING, PROVIDER_BRANCH_PAY,
+    PROVIDER_BRANCH_RESERVED, branch_window_open, funding_lock, job_lock, provider_note_lock,
+};
 pub use lock::{
-    HOLD_BRANCH_CAPTURE, HOLD_BRANCH_PADDING, HOLD_BRANCH_RECLAIM, HOLD_BRANCH_VOID, bounty_lock,
-    first_name_for_lock, hold_lock, lock_merkle_proof, lock_root, verify_merk_proof,
+    bounty_lock, first_name_for_lock, lock_merkle_proof, lock_root, pkh_conjunct,
+    verify_merk_proof,
 };
 pub use mint::{Mint, MintError};
 // Cross-graft seam helper: cue-then-jam canonicalization for bytes

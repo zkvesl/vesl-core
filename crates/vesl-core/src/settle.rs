@@ -265,7 +265,7 @@ pub fn build_capture_seeds(
 
     anyhow::ensure!(
         !outputs.is_empty(),
-        "a capture with no outputs would burn the whole hold"
+        "a spend with no outputs would burn the whole input note"
     );
 
     let mut total: u128 = 0;
@@ -370,7 +370,7 @@ pub use self::build_capture_seeds as build_output_seeds;
 ///
 /// ⛔ **What it protects against is a seed we did not author.** Our own callers
 /// already refuse two outputs under one lock root — [`build_capture_seeds`]
-/// here, and the buyer wallet's hold/deposit check — and those refusals should
+/// here, and the buyer wallet's own output checks — and those refusals should
 /// stay, because they fail early and name a cause where consensus does not. The
 /// hazard this closes is CROSS-INPUT: the signed digest covers only *this
 /// spend's* seeds and fee (`tx-engine-1.hoon:1116-1121`), so another input in
@@ -594,7 +594,7 @@ pub fn sign_tx(
 /// NOT A TYPE CHECK.** This helper never receives a `Lock` — it takes
 /// `is_coinbase` and *constructs* the input's spend-condition itself. So it
 /// cannot "refuse a multi-branch lock": handed a note whose real lock is the
-/// four-branch hold (`crate::lock::hold_lock`), it would happily build a
+/// four-branch job note (`crate::job_locks::job_lock`), it would happily build a
 /// proof for a lock that is not the note's, and consensus would refuse the
 /// spend **naming nothing** — the witness's merkle root simply would not
 /// match the note's first-name (`tx-engine-1.hoon:2012-2016`).
@@ -663,24 +663,29 @@ pub fn build_witness(
     ))
 }
 
-/// One party's contribution to a hold spend: a signing key.
-pub type HoldSigner = [nockchain_math::belt::Belt; 8];
+/// One party's contribution to a multi-signature branch spend: a signing key.
+pub type BranchSigner = [nockchain_math::belt::Belt; 8];
 
-/// One party's **finished** contribution to a hold spend: the public key it
+/// One party's **finished** contribution to a branch spend: the public key it
 /// signed under, and its signature over the spend's sig-hash.
 ///
 /// ⚑ *In plain terms: what a co-signer sends back. Not its key — the signature
 /// it made with it.*
 ///
-/// ⛔⛔ **THIS TYPE IS WHY THE CAPTURE IS BUILDABLE AT ALL.** The hold's capture
-/// and void branches are 2-of-2 between the buyer and the platform, and the
-/// buyer will never hand the platform a secret key. [`build_hold_witness`]
-/// takes `&[HoldSigner]` — keys — so it can only ever assemble a spend by a
-/// party that holds *both*, which is a test fixture and not the design
-/// (`x402 XD-6`: *an unchecking co-signature is a 1-of-1 with extra steps*, and
-/// a co-signature the platform could forge is not one at all).
+/// ⛔⛔ **THIS TYPE IS WHY A 2-OF-2 IS BUILDABLE AT ALL.** Every spend of the escrow
+/// flow's notes (`crate::job_locks`) is a 2-of-2 between two parties who will
+/// never hand each other a secret key — the buyer's job key and the platform
+/// for a move or a clawback, the platform and the provider for a capture.
+/// [`build_branch_witness`] takes `&[BranchSigner]` — keys — so it can only ever
+/// assemble a spend by a party that holds *both*, which is a test fixture and
+/// not the design (`x402 XD-6`: *an unchecking co-signature is a 1-of-1 with
+/// extra steps*).
+///
+/// ⚑ Renamed from `HoldCosignature` when the buyer's hold retired
+/// (`vesl-engine` `plans/port/STEP4.md` §10): the builder never depended on the
+/// hold's shape, only on the branch it is handed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HoldCosignature {
+pub struct Cosignature {
     /// The public key this signature is checked under. ⛔ Carried rather than
     /// derived, because the verifier has no key to derive it from.
     pub pubkey: nockchain_types::tx_engine::common::SchnorrPubkey,
@@ -698,23 +703,23 @@ pub struct HoldCosignature {
 /// branch-agnostic and this function cannot tell an honest spend from a hostile
 /// one. **Whatever decides to sign must check the output set first** — that is
 /// the co-signer's own job (`x402 XD-6`, board row 5b) and it is not here.
-pub fn hold_cosign(
-    sk: &HoldSigner,
+pub fn cosign(
+    sk: &BranchSigner,
     sig_hash: &nockchain_types::tx_engine::common::Hash,
-) -> Result<HoldCosignature> {
-    Ok(HoldCosignature {
+) -> Result<Cosignature> {
+    Ok(Cosignature {
         pubkey: crate::signing::derive_pubkey(sk)
             .map_err(|e| anyhow::anyhow!("pubkey derivation failed: {e}"))?,
         signature: sign_tx(sk, sig_hash)?,
     })
 }
 
-/// Build the witness that spends one branch of the buyer's hold
-/// (`crate::lock::hold_lock`, `XD-3`), from **finished signatures**.
+/// Build the witness that spends one branch of a multi-branch lock, from
+/// **finished signatures**.
 ///
-/// ⚑ *In plain terms: this assembles the paperwork for moving the buyer's
-/// parked money — which branch is being used, who signed, and (for a capture)
-/// the key that decrypts the answer — out of signatures the parties made
+/// ⚑ *In plain terms: this assembles the paperwork for moving money out of a
+/// note with several ways in — which way is being used, who signed, and any
+/// hashlock preimage that way demands — out of signatures the parties made
 /// separately, without either handing over its key.*
 ///
 /// ⛔⛔ **EVERY REFUSAL BELOW IS ALSO A CONSENSUS REFUSAL — the difference is
@@ -749,12 +754,12 @@ pub fn hold_cosign(
 /// digest of the spend you intend. It covers the seeds and the fee and nothing
 /// else (`tx-engine-1.hoon:1116-1120`), so a signature is branch-agnostic —
 /// the caller must compute it over the real output set.
-pub fn build_hold_witness_from_parts(
+pub fn build_branch_witness_from_parts(
     lock: &nockchain_types::tx_engine::v1::tx::Lock,
     branch: u64,
     height: u64,
     bythos_phase: u64,
-    parts: &[HoldCosignature],
+    parts: &[Cosignature],
     sig_hash: &nockchain_types::tx_engine::common::Hash,
     hax: Vec<nockchain_types::tx_engine::v1::tx::HaxPreimage>,
 ) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
@@ -824,28 +829,26 @@ pub fn build_hold_witness_from_parts(
 
     // ⛔⛔ A branch carrying a `%brn` CANNOT BE SPENT, whatever else is in it —
     // `check` walks the conjuncts with `levy` and answers `%|` for `%brn`
-    // unconditionally (`tx-engine-1.hoon:2260-2267`). Since the hold's padding
-    // branch gained the job commitment it also carries a `%hax`, and demanding a
-    // preimage for that would be demanding one that CANNOT EXIST: `job_com` is
-    // the order's digest over field elements, not `hash-noun` of any noun. The
-    // only reason to build a witness for this branch at all is to demonstrate
-    // that consensus refuses it (`hold_lifecycle_devnet`), and that
+    // unconditionally (`tx-engine-1.hoon:2260-2267`). The escrow flow's TAG and
+    // RESERVED branches (`crate::job_locks`) carry the job's facts in a `%hax`
+    // beside the burn, and demanding a preimage for those would be demanding one
+    // that CANNOT EXIST: an order digest is a fold over field elements, not
+    // `hash-noun` of any noun. The only reason to build a witness for such a
+    // branch is to demonstrate that consensus refuses it, and that
     // demonstration must stay constructible.
     //
-    // ⚑ This does not weaken the capture: `B1` carries no `%brn`, so its
-    // preimage requirement below is untouched. What is skipped here is a
-    // requirement on a branch no witness can ever spend.
+    // ⚑ This does not weaken a spendable branch: one without a `%brn` keeps its
+    // preimage requirement below untouched.
     let unspendable = condition.iter().any(|p| matches!(p, LockPrimitive::Burn));
 
-    // The delivery condition. Fail closed on a missing preimage: this is the
-    // one refusal the whole row exists to make certain of.
+    // Every hashlock a spendable branch names. Fail closed on a missing preimage.
     for primitive in condition.iter().filter(|_| !unspendable) {
         if let LockPrimitive::Hax(set) = primitive {
             for wanted in set.0.iter() {
                 let entry = hax.iter().find(|e| &e.hash == wanted).ok_or_else(|| {
                     anyhow::anyhow!(
                         "branch {branch} requires a hashlock preimage that this \
-                         witness does not carry — a capture must publish the key"
+                         witness does not carry — the spend must publish it"
                     )
                 })?;
                 // ⛔ And it must be the RIGHT preimage. `check:hax` recomputes
@@ -867,33 +870,33 @@ pub fn build_hold_witness_from_parts(
     Ok(Witness::new(lmp, PkhSignature::new(entries), hax))
 }
 
-/// Build a hold-spend witness from signing **keys** — the single-party
-/// convenience over [`build_hold_witness_from_parts`].
+/// Build a branch-spend witness from signing **keys** — the single-party
+/// convenience over [`build_branch_witness_from_parts`].
 ///
 /// ⚑ *In plain terms: the same thing, for when one process happens to hold
 /// every key involved. That is a test fixture and a demonstration tool, not the
 /// production shape.*
 ///
 /// ⛔ **A 2-of-2 assembled here is not a co-signature.** Both keys are in one
-/// place, so nothing about the buyer's independent agreement is established.
-/// Production builds the buyer's half with [`hold_cosign`] on the buyer's own
-/// machine and assembles with [`build_hold_witness_from_parts`]; this wrapper
+/// place, so nothing about either party's independent agreement is established.
+/// Production builds each party's half with [`cosign`] on its own
+/// machine and assembles with [`build_branch_witness_from_parts`]; this wrapper
 /// exists so the devnet tools and the unit fixtures keep working unchanged, and
 /// so every check has exactly one home.
-pub fn build_hold_witness(
+pub fn build_branch_witness(
     lock: &nockchain_types::tx_engine::v1::tx::Lock,
     branch: u64,
     height: u64,
     bythos_phase: u64,
-    signers: &[HoldSigner],
+    signers: &[BranchSigner],
     sig_hash: &nockchain_types::tx_engine::common::Hash,
     hax: Vec<nockchain_types::tx_engine::v1::tx::HaxPreimage>,
 ) -> Result<nockchain_types::tx_engine::v1::tx::Witness> {
     let parts = signers
         .iter()
-        .map(|sk| hold_cosign(sk, sig_hash))
+        .map(|sk| cosign(sk, sig_hash))
         .collect::<Result<Vec<_>>>()?;
-    build_hold_witness_from_parts(lock, branch, height, bythos_phase, &parts, sig_hash, hax)
+    build_branch_witness_from_parts(lock, branch, height, bythos_phase, &parts, sig_hash, hax)
 }
 
 /// Submit a transaction to the chain and optionally wait for acceptance.
@@ -1168,9 +1171,61 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // The hold spend builder — every refusal exercised. A derived register is
+    // The branch spend builder — every refusal exercised. A derived register is
     // an untested arm.
+    //
+    // ⚑ The builder is shape-agnostic, so its refusals are exercised on a
+    // TEST-LOCAL lock that carries every conjunct kind in one place: a 2-of-2
+    // with a hashlock (B1), a 2-of-2 over a DIFFERENT pair (B2), a 1-of-1 with a
+    // wait and its own hashlock (B3), and a burn beside a hashlock (B4). It is
+    // the retired buyer hold's shape — no shipped note has a spendable hashlock
+    // since `STEP4.md` ruling 40 — kept here because it is the one shape that
+    // reaches every arm. The shipped notes are exercised at the end of this
+    // module (`the_escrow_flows_notes_*`).
     // -----------------------------------------------------------------------
+
+    const B_KEYED: u64 = 1;
+    const B_OTHER_PAIR: u64 = 2;
+    const B_ALONE: u64 = 3;
+    const B_DEAD: u64 = 4;
+
+    fn every_conjunct_lock(
+        a: nockchain_types::tx_engine::common::Hash,
+        c: nockchain_types::tx_engine::common::Hash,
+        b: nockchain_types::tx_engine::common::Hash,
+        h_k: nockchain_types::tx_engine::common::Hash,
+        h_sb: nockchain_types::tx_engine::common::Hash,
+    ) -> nockchain_types::tx_engine::v1::tx::Lock {
+        use nockchain_math::belt::Belt;
+        use nockchain_types::tx_engine::common::{
+            BlockHeightDelta, Hash, TimelockRangeAbsolute, TimelockRangeRelative,
+        };
+        use nockchain_types::tx_engine::v1::tx::{
+            Hax, Lock, LockPrimitive, LockTim, LockV2, LockV4, SpendCondition,
+        };
+        let pkh = crate::lock::pkh_conjunct;
+        let b1 = SpendCondition::new(vec![
+            pkh(2, vec![a.clone(), b.clone()]).unwrap(),
+            LockPrimitive::Hax(Hax::new(vec![h_k])),
+        ]);
+        let b2 = SpendCondition::new(vec![pkh(2, vec![c, b]).unwrap()]);
+        let b3 = SpendCondition::new(vec![
+            pkh(1, vec![a]).unwrap(),
+            LockPrimitive::Tim(LockTim {
+                rel: TimelockRangeRelative::new(Some(BlockHeightDelta(Belt(4))), None),
+                abs: TimelockRangeAbsolute::none(),
+            }),
+            LockPrimitive::Hax(Hax::new(vec![h_sb])),
+        ]);
+        let b4 = SpendCondition::new(vec![
+            LockPrimitive::Burn,
+            LockPrimitive::Hax(Hax::new(vec![Hash::from_limbs(&[7, 7, 7, 7, 7])])),
+        ]);
+        Lock::V4(LockV4 {
+            p: LockV2 { p: b1, q: b2 },
+            q: LockV2 { p: b3, q: b4 },
+        })
+    }
 
     fn hold_fixture() -> HoldFixture {
         use nockchain_math::owned_based_noun::OwnedBasedNoun;
@@ -1182,9 +1237,8 @@ mod tests {
             sk[0] = nockchain_math::belt::Belt(seed);
             sk
         };
-        // ⚑ THREE keys since row 10: the buyer's payment key, the buyer's
-        // dedicated VOID key, and the platform's. The void key is what stops a
-        // capture co-signature spending B2.
+        // Three keys: B1's pair is {buyer, platform}, B2's is {buyer_void,
+        // platform}, so a B1 co-signature is not a B2 one.
         let (buyer_sk, buyer_void_sk, platform_sk) = (mk(11), mk(17), mk(23));
         let pkh_of = |sk: &[nockchain_math::belt::Belt; 8]| {
             crate::signing::pubkey_hash(&crate::signing::derive_pubkey(sk).unwrap()).unwrap()
@@ -1203,7 +1257,6 @@ mod tests {
             hash: h_k.clone(),
             value,
         };
-        // The reclaim's own secret, built the same self-consistent way.
         let sb_value = OwnedBasedNoun::Cell(
             Box::new(OwnedBasedNoun::Atom(nockchain_math::belt::Belt(0xfeed))),
             Box::new(OwnedBasedNoun::Atom(nockchain_math::belt::Belt(0x5678))),
@@ -1213,16 +1266,13 @@ mod tests {
             hash: h_sb.clone(),
             value: sb_value,
         };
-        let lock = crate::lock::hold_lock(
+        let lock = every_conjunct_lock(
             pkh_of(&buyer_sk),
             pkh_of(&buyer_void_sk),
             pkh_of(&platform_sk),
             h_k,
             h_sb,
-            4,
-            Hash::from_limbs(&[7, 7, 7, 7, 7]),
-        )
-        .expect("three distinct keys");
+        );
         HoldFixture {
             lock,
             buyer_sk,
@@ -1233,9 +1283,9 @@ mod tests {
         }
     }
 
-    /// What [`hold_fixture`] hands back. ⚑ A struct rather than a tuple since
-    /// row 10 took it to six members — a positional sixth is exactly how a
-    /// test ends up signing with the wrong key and still passing.
+    /// What [`hold_fixture`] hands back. ⚑ A struct rather than a tuple — a
+    /// positional sixth is exactly how a test ends up signing with the wrong key
+    /// and still passing.
     struct HoldFixture {
         lock: nockchain_types::tx_engine::v1::tx::Lock,
         buyer_sk: [nockchain_math::belt::Belt; 8],
@@ -1253,10 +1303,10 @@ mod tests {
     fn a_capture_witness_needs_both_signatures_and_the_key() {
         let f = hold_fixture();
         let (lock, buyer, platform, preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let b = B_KEYED;
 
         // ✅ Both signatures and the key.
-        let w = build_hold_witness(
+        let w = build_branch_witness(
             &lock,
             b,
             10,
@@ -1271,24 +1321,24 @@ mod tests {
 
         // ⛔ Without the key — the delivery condition, refused before it can
         // vanish at a node.
-        let err = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
+        let err = build_branch_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("must publish the key"), "{err}");
+        assert!(err.contains("must publish it"), "{err}");
 
         // ⛔ With the wrong key.
         let mut wrong = preimage.clone();
         wrong.hash = nockchain_types::tx_engine::common::Hash::from_limbs(&[1, 2, 3, 4, 5]);
-        let err = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![wrong])
+        let err = build_branch_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![wrong])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("must publish the key"), "{err}");
+        assert!(err.contains("must publish it"), "{err}");
 
         // ⛔ With a preimage whose value does not hash to what the lock names.
         let mut mislabelled = preimage.clone();
         mislabelled.value =
             nockchain_math::owned_based_noun::OwnedBasedNoun::Atom(nockchain_math::belt::Belt(7));
-        let err = build_hold_witness(
+        let err = build_branch_witness(
             &lock,
             b,
             10,
@@ -1312,12 +1362,12 @@ mod tests {
         // the refusal would still fire, on a different cause, and the leg would
         // silently stop being about what it is named for.
         for (b, signer) in [
-            (crate::lock::HOLD_BRANCH_CAPTURE, buyer),
-            (crate::lock::HOLD_BRANCH_VOID, f.buyer_void_sk),
+            (B_KEYED, buyer),
+            (B_OTHER_PAIR, f.buyer_void_sk),
         ] {
             // ⛔ One signature is not a weaker two — `check:pkh` compares the
             // map size for EQUALITY.
-            let err = build_hold_witness(&lock, b, 10, 1, &[signer], &sh(), vec![preimage.clone()])
+            let err = build_branch_witness(&lock, b, 10, 1, &[signer], &sh(), vec![preimage.clone()])
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("2-of-2"), "{err}");
@@ -1325,7 +1375,7 @@ mod tests {
             // ⛔⛔ The same signer twice. The witness half is a MAP keyed by
             // pkh, so this is ONE entry at consensus — a silent downgrade of a
             // 2-of-2 to a 1-of-1, which no test of the honest path can show.
-            let err = build_hold_witness(
+            let err = build_branch_witness(
                 &lock,
                 b,
                 10,
@@ -1347,9 +1397,9 @@ mod tests {
         let (lock, buyer, _platform, preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
         let mut stranger = [nockchain_math::belt::Belt(0); 8];
         stranger[0] = nockchain_math::belt::Belt(99);
-        let err = build_hold_witness(
+        let err = build_branch_witness(
             &lock,
-            crate::lock::HOLD_BRANCH_CAPTURE,
+            B_KEYED,
             10,
             1,
             &[buyer, stranger],
@@ -1372,8 +1422,8 @@ mod tests {
     fn the_reclaim_branch_takes_the_buyer_alone_and_its_own_secret() {
         let f = hold_fixture();
         let (lock, buyer, platform) = (&f.lock, f.buyer_sk, f.platform_sk);
-        let b = crate::lock::HOLD_BRANCH_RECLAIM;
-        let w = build_hold_witness(lock, b, 10, 1, &[buyer], &sh(), vec![f.sb_preimage.clone()])
+        let b = B_ALONE;
+        let w = build_branch_witness(lock, b, 10, 1, &[buyer], &sh(), vec![f.sb_preimage.clone()])
             .expect("the buyer's recovery must build");
         assert_eq!(w.pkh_signature.0.len(), 1);
         assert_eq!(
@@ -1384,7 +1434,7 @@ mod tests {
 
         // ⭐ The row-10 half: without the secret the branch does not build, so
         // a buyer's bare payment signature no longer reaches its own recovery.
-        let err = build_hold_witness(lock, b, 10, 1, &[buyer], &sh(), vec![])
+        let err = build_branch_witness(lock, b, 10, 1, &[buyer], &sh(), vec![])
             .unwrap_err()
             .to_string();
         assert!(err.contains("hashlock preimage"), "{err}");
@@ -1392,8 +1442,8 @@ mod tests {
         // ⛔ It is 1-of-1 over the buyer, so the platform is not a member and
         // two signatures are the wrong count.
         let sb = || vec![f.sb_preimage.clone()];
-        assert!(build_hold_witness(lock, b, 10, 1, &[platform], &sh(), sb()).is_err());
-        assert!(build_hold_witness(lock, b, 10, 1, &[buyer, platform], &sh(), sb()).is_err());
+        assert!(build_branch_witness(lock, b, 10, 1, &[platform], &sh(), sb()).is_err());
+        assert!(build_branch_witness(lock, b, 10, 1, &[buyer, platform], &sh(), sb()).is_err());
     }
 
     /// ⭐⭐ **THE ROW-10 PROPERTY, AT THE BUILDER.** A capture co-signature is
@@ -1408,11 +1458,11 @@ mod tests {
     #[test]
     fn a_capture_cosignature_cannot_spend_the_void_branch() {
         let f = hold_fixture();
-        let void = crate::lock::HOLD_BRANCH_VOID;
+        let void = B_OTHER_PAIR;
 
         // The honest void: the buyer's DEDICATED key plus the platform.
         assert!(
-            build_hold_witness(
+            build_branch_witness(
                 &f.lock,
                 void,
                 10,
@@ -1426,7 +1476,7 @@ mod tests {
         );
 
         // ⛔ The attack: the very signatures a capture is made from, on B2.
-        let err = build_hold_witness(
+        let err = build_branch_witness(
             &f.lock,
             void,
             10,
@@ -1445,9 +1495,9 @@ mod tests {
         // ...and the control, so the refusal above is about the KEY and not
         // about the branch being unusable: the same buyer key spends B1.
         assert!(
-            build_hold_witness(
+            build_branch_witness(
                 &f.lock,
-                crate::lock::HOLD_BRANCH_CAPTURE,
+                B_KEYED,
                 10,
                 1,
                 &[f.buyer_sk, f.platform_sk],
@@ -1472,9 +1522,9 @@ mod tests {
     fn the_padding_branch_takes_no_signatures() {
         let f = hold_fixture();
         let (lock, buyer, _p, _k) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_PADDING;
-        assert!(build_hold_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![]).is_err());
-        let w = build_hold_witness(&lock, b, 10, 1, &[], &sh(), vec![]).expect("no signers");
+        let b = B_DEAD;
+        assert!(build_branch_witness(&lock, b, 10, 1, &[buyer], &sh(), vec![]).is_err());
+        let w = build_branch_witness(&lock, b, 10, 1, &[], &sh(), vec![]).expect("no signers");
         assert!(w.pkh_signature.0.is_empty());
         assert!(
             w.hax.is_empty(),
@@ -1494,11 +1544,11 @@ mod tests {
     fn skipping_the_dead_branchs_hashlock_does_not_skip_the_captures() {
         let f = hold_fixture();
         let (lock, buyer, platform, _preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
-        let why = build_hold_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
+        let b = B_KEYED;
+        let why = build_branch_witness(&lock, b, 10, 1, &[buyer, platform], &sh(), vec![])
             .expect_err("a capture with no preimage must still be refused");
         assert!(
-            why.to_string().contains("must publish the key"),
+            why.to_string().contains("must publish it"),
             "the refusal must name the capture's key, got: {why}"
         );
     }
@@ -1914,7 +1964,7 @@ mod tests {
     #[test]
     fn a_capture_with_no_outputs_is_refused() {
         let err = build_capture_seeds(&[], &root(9), 1_000, 10).expect_err("must not build");
-        assert!(err.to_string().contains("burn the whole hold"), "{err}");
+        assert!(err.to_string().contains("burn the whole input note"), "{err}");
     }
 
     /// The note-data rides on exactly the output it was given to — the escrow's
@@ -1947,9 +1997,9 @@ mod tests {
     fn assembling_from_cosignatures_equals_assembling_from_keys() {
         let f = hold_fixture();
         let (lock, buyer, platform, preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let b = B_KEYED;
 
-        let from_keys = build_hold_witness(
+        let from_keys = build_branch_witness(
             &lock,
             b,
             10,
@@ -1963,11 +2013,11 @@ mod tests {
         // What production does: each party signs on its own machine and sends
         // back only a public key and a signature.
         let parts = [
-            hold_cosign(&buyer, &sh()).expect("buyer signs"),
-            hold_cosign(&platform, &sh()).expect("platform signs"),
+            cosign(&buyer, &sh()).expect("buyer signs"),
+            cosign(&platform, &sh()).expect("platform signs"),
         ];
         let from_parts =
-            build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
+            build_branch_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
                 .expect("cosignatures");
 
         assert_eq!(from_keys, from_parts);
@@ -1981,26 +2031,26 @@ mod tests {
     fn a_cosignature_over_a_different_spend_is_refused() {
         let f = hold_fixture();
         let (lock, buyer, platform, preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let b = B_KEYED;
         let other = nockchain_types::tx_engine::common::Hash::from_limbs(&[99, 88, 77, 66, 55]);
         assert_ne!(other, sh());
 
         // The buyer signed a different transaction than the one being assembled.
         let parts = [
-            hold_cosign(&buyer, &other).expect("buyer signs the wrong spend"),
-            hold_cosign(&platform, &sh()).expect("platform signs"),
+            cosign(&buyer, &other).expect("buyer signs the wrong spend"),
+            cosign(&platform, &sh()).expect("platform signs"),
         ];
         let err =
-            build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage.clone()])
+            build_branch_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage.clone()])
                 .expect_err("a signature over another output set must not assemble");
         assert!(err.to_string().contains("does not verify"), "{err}");
 
         // ⭐ THE CONTROL — the same two parties over the RIGHT digest assemble.
         let good = [
-            hold_cosign(&buyer, &sh()).expect("buyer signs"),
-            hold_cosign(&platform, &sh()).expect("platform signs"),
+            cosign(&buyer, &sh()).expect("buyer signs"),
+            cosign(&platform, &sh()).expect("platform signs"),
         ];
-        build_hold_witness_from_parts(&lock, b, 10, 1, &good, &sh(), vec![preimage])
+        build_branch_witness_from_parts(&lock, b, 10, 1, &good, &sh(), vec![preimage])
             .expect("the honest pair assembles");
     }
 
@@ -2011,15 +2061,15 @@ mod tests {
     fn a_cosignature_from_an_unnamed_key_is_refused() {
         let f = hold_fixture();
         let (lock, buyer, _platform, preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let b = B_KEYED;
         let mut stranger = [nockchain_math::belt::Belt(0); 8];
         stranger[0] = nockchain_math::belt::Belt(4_242);
 
         let parts = [
-            hold_cosign(&buyer, &sh()).expect("buyer signs"),
-            hold_cosign(&stranger, &sh()).expect("stranger signs"),
+            cosign(&buyer, &sh()).expect("buyer signs"),
+            cosign(&stranger, &sh()).expect("stranger signs"),
         ];
-        let err = build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
+        let err = build_branch_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![preimage])
             .expect_err("a stranger must not co-sign");
         assert!(err.to_string().contains("not named by branch"), "{err}");
     }
@@ -2030,13 +2080,101 @@ mod tests {
     fn a_keyless_capture_is_refused_on_the_cosignature_path_too() {
         let f = hold_fixture();
         let (lock, buyer, platform, _preimage) = (f.lock, f.buyer_sk, f.platform_sk, f.preimage);
-        let b = crate::lock::HOLD_BRANCH_CAPTURE;
+        let b = B_KEYED;
         let parts = [
-            hold_cosign(&buyer, &sh()).expect("buyer signs"),
-            hold_cosign(&platform, &sh()).expect("platform signs"),
+            cosign(&buyer, &sh()).expect("buyer signs"),
+            cosign(&platform, &sh()).expect("platform signs"),
         ];
-        let err = build_hold_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![])
+        let err = build_branch_witness_from_parts(&lock, b, 10, 1, &parts, &sh(), vec![])
             .expect_err("a capture must publish the key");
-        assert!(err.to_string().contains("must publish the key"), "{err}");
+        assert!(err.to_string().contains("must publish it"), "{err}");
+    }
+
+    // -----------------------------------------------------------------------
+    // ⭐ THE ESCROW FLOW'S OWN NOTES (`crate::job_locks`, `STEP4.md` rulings 40–50):
+    // each spendable branch assembles from exactly the parties it names, and a
+    // pair's co-signature does not reach another pair's branch.
+    // -----------------------------------------------------------------------
+
+    fn escrow_keys() -> (BranchSigner, BranchSigner, BranchSigner, crate::job_locks::JobParties) {
+        let mk = |seed: u64| {
+            let mut sk = [nockchain_math::belt::Belt(0); 8];
+            sk[0] = nockchain_math::belt::Belt(seed);
+            sk
+        };
+        let (buyer_j, platform, provider) = (mk(31), mk(37), mk(41));
+        let pkh_of = |sk: &BranchSigner| {
+            crate::signing::pubkey_hash(&crate::signing::derive_pubkey(sk).unwrap()).unwrap()
+        };
+        let parties = crate::job_locks::JobParties {
+            buyer_j: pkh_of(&buyer_j),
+            platform: pkh_of(&platform),
+            provider: pkh_of(&provider),
+        };
+        (buyer_j, platform, provider, parties)
+    }
+
+    fn escrow_facts() -> crate::job_locks::JobFacts {
+        crate::job_locks::JobFacts {
+            order_digest: nockchain_types::tx_engine::common::Hash::from_limbs(&[1, 2, 3, 4, 5]),
+            weight_root: nockchain_types::tx_engine::common::Hash::from_limbs(&[6, 7, 8, 9, 10]),
+        }
+    }
+
+    #[test]
+    fn the_escrow_flows_notes_assemble_from_exactly_the_parties_each_branch_names() {
+        use crate::job_locks::*;
+        let (buyer_j, platform, provider, p) = escrow_keys();
+        let f = escrow_facts();
+        let rr = nockchain_types::tx_engine::common::Hash::from_limbs(&[11, 12, 13, 14, 15]);
+        let w = |lock: &nockchain_types::tx_engine::v1::tx::Lock, b: u64, s: &[BranchSigner]| {
+            build_branch_witness(lock, b, 10, 1, s, &sh(), vec![])
+        };
+
+        let fund = funding_lock(&p.buyer_j, &p.platform, 50, &f).unwrap();
+        assert!(w(&fund, FUNDING_BRANCH_FAST, &[buyer_j, platform]).is_ok());
+        assert!(w(&fund, FUNDING_BRANCH_RECOVER, &[buyer_j]).is_ok());
+        assert!(w(&fund, FUNDING_BRANCH_FAST, &[provider, platform]).is_err());
+        assert!(w(&fund, FUNDING_BRANCH_RECOVER, &[platform]).is_err());
+
+        let job = job_lock(&p, 20, &f).unwrap();
+        assert!(w(&job, JOB_BRANCH_CAPTURE, &[platform, provider]).is_ok());
+        assert!(w(&job, JOB_BRANCH_FAST, &[buyer_j, platform]).is_ok());
+        assert!(w(&job, JOB_BRANCH_RECOVER, &[buyer_j]).is_ok());
+        // ⛔ The buyer's move co-signature does not capture, and the capture's
+        // pair does not move the money back.
+        let err = w(&job, JOB_BRANCH_CAPTURE, &[buyer_j, platform]).unwrap_err();
+        assert!(err.to_string().contains("not named by"), "{err}");
+        let err = w(&job, JOB_BRANCH_FAST, &[provider, platform]).unwrap_err();
+        assert!(err.to_string().contains("not named by"), "{err}");
+        // ⛔ No single party captures.
+        assert!(w(&job, JOB_BRANCH_CAPTURE, &[platform]).is_err());
+
+        let n = provider_note_lock(&p, 30, &f, &rr).unwrap();
+        assert!(w(&n, PROVIDER_BRANCH_PAY, &[provider]).is_ok());
+        assert!(w(&n, PROVIDER_BRANCH_CLAWBACK, &[buyer_j, platform]).is_ok());
+        let err = w(&n, PROVIDER_BRANCH_CLAWBACK, &[provider, platform]).unwrap_err();
+        assert!(err.to_string().contains("not named by"), "{err}");
+        assert!(w(&n, PROVIDER_BRANCH_PAY, &[platform]).is_err());
+    }
+
+    /// ⛔ The facts ride branches holding a burn, so a witness for them is
+    /// constructible with no preimage (there is none to give) and no signature —
+    /// the demonstration that consensus refuses the branch stays buildable.
+    #[test]
+    fn the_escrow_flows_notes_fact_branches_take_nothing_and_publish_nothing() {
+        use crate::job_locks::*;
+        let (_b, platform, _pr, p) = escrow_keys();
+        let f = escrow_facts();
+        let rr = nockchain_types::tx_engine::common::Hash::from_limbs(&[11, 12, 13, 14, 15]);
+        for (lock, b) in [
+            (funding_lock(&p.buyer_j, &p.platform, 50, &f).unwrap(), FUNDING_BRANCH_TAG),
+            (job_lock(&p, 20, &f).unwrap(), JOB_BRANCH_TAG),
+            (provider_note_lock(&p, 30, &f, &rr).unwrap(), PROVIDER_BRANCH_RESERVED),
+        ] {
+            let wit = build_branch_witness(&lock, b, 10, 1, &[], &sh(), vec![]).expect("buildable");
+            assert!(wit.pkh_signature.0.is_empty() && wit.hax.is_empty());
+            assert!(build_branch_witness(&lock, b, 10, 1, &[platform], &sh(), vec![]).is_err());
+        }
     }
 }

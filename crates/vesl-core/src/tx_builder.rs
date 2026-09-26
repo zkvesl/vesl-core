@@ -132,6 +132,38 @@ pub async fn kernel_note_hash_with_timeout(
     extract_hash_from_effect(&effects, "note-hash")
 }
 
+/// Compute `hash:lock` of a lock by poking the Hoon kernel's `%lock-root` handler —
+/// the chain's own answer, which the escrow flow's notes (`crate::job_locks`, built
+/// through `nockchain-types`' Rust hashing) are pinned against in `vesl-parity-corpus`
+/// (`vesl-engine` `plans/port/STEP4.md` §10).
+///
+/// Sends `[%lock-root lock-jam]` where `lock-jam` is the JAM'd `lock` noun.
+pub async fn kernel_lock_root_with_timeout(
+    app: &mut NockApp,
+    lock: &nockchain_types::tx_engine::v1::tx::Lock,
+    timeout: std::time::Duration,
+) -> anyhow::Result<Hash> {
+    let lock_jammed = {
+        let mut slab: NounSlab<NockJammer> = NounSlab::new();
+        let noun = lock.to_noun(&mut slab);
+        slab.set_root(noun);
+        slab.jam()
+    };
+
+    let mut poke_slab: NounSlab = NounSlab::new();
+    let tag = make_tas(&mut poke_slab, "lock-root").as_noun();
+    let lock_atom = bytes_to_atom(&mut poke_slab, &lock_jammed);
+    let cmd = T(&mut poke_slab, &[tag, lock_atom]);
+    poke_slab.set_root(cmd);
+
+    let effects = tokio::time::timeout(timeout, app.poke(SystemWire.to_wire(), poke_slab))
+        .await
+        .map_err(|_| anyhow::anyhow!("lock-root poke timed out after {}s", timeout.as_secs()))?
+        .map_err(|e| anyhow::anyhow!("lock-root poke failed: {e:?}"))?;
+
+    extract_hash_from_effect(&effects, "lock-root")
+}
+
 // ---------------------------------------------------------------------------
 // Manual noun builders — work around NockStack issue in ZSet/z-map
 // ---------------------------------------------------------------------------
