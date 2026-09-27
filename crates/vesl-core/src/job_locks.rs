@@ -226,7 +226,7 @@ fn tim_open(t: &LockTim, since: u64, now: u64) -> bool {
     rmin && rmax && amin && amax
 }
 
-fn relative(min: Option<u64>, max: Option<u64>) -> LockPrimitive {
+pub(crate) fn relative(min: Option<u64>, max: Option<u64>) -> LockPrimitive {
     LockPrimitive::Tim(LockTim {
         rel: TimelockRangeRelative::new(
             min.map(|v| BlockHeightDelta(Belt(v))),
@@ -236,7 +236,7 @@ fn relative(min: Option<u64>, max: Option<u64>) -> LockPrimitive {
     })
 }
 
-fn four(a: SpendCondition, b: SpendCondition, c: SpendCondition, d: SpendCondition) -> Lock {
+pub(crate) fn four(a: SpendCondition, b: SpendCondition, c: SpendCondition, d: SpendCondition) -> Lock {
     Lock::V4(LockV4 {
         p: LockV2 { p: a, q: b },
         q: LockV2 { p: c, q: d },
@@ -256,7 +256,7 @@ fn facts_list(facts: &JobFacts, record_root: Option<&Hash>) -> Vec<(&'static str
 
 /// The `%hax` carrying the job's facts, refusing a fact that is not a digest (a limb at or
 /// above the field prime) and two facts that are equal (the z-set would collapse them).
-fn facts_hax(facts: &[(&'static str, Hash)]) -> anyhow::Result<LockPrimitive> {
+pub(crate) fn facts_hax(facts: &[(&'static str, Hash)]) -> anyhow::Result<LockPrimitive> {
     for (name, h) in facts {
         if let Some(limb) = h.to_array().iter().find(|l| **l >= PRIME) {
             anyhow::bail!(
@@ -282,7 +282,7 @@ fn facts_hax(facts: &[(&'static str, Hash)]) -> anyhow::Result<LockPrimitive> {
     Ok(LockPrimitive::Hax(hax))
 }
 
-fn refuse_same_key(a: &Hash, b: &Hash, an: &str, bn: &str, branch: &str) -> anyhow::Result<()> {
+pub(crate) fn refuse_same_key(a: &Hash, b: &Hash, an: &str, bn: &str, branch: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         a != b,
         "{an} and {bn} are the same key. {branch}'s 2-of-2 would collapse through the z-set's \
@@ -313,7 +313,7 @@ fn refuse_distinct_parties(p: &JobParties, note: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn refuse_zero_window(v: u64, what: &str, bound: &str) -> anyhow::Result<()> {
+pub(crate) fn refuse_zero_window(v: u64, what: &str, bound: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         v != 0,
         "{what} is zero. {bound} would be DROPPED by the chain (TimelockRangeRelative::new \

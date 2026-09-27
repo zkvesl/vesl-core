@@ -259,6 +259,34 @@ fn demo_provider_note_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock>
     vesl_core::job_locks::provider_note_lock(&demo_parties()?, 1_152, &demo_facts(), &h(43))
 }
 
+/// A provider SLICE of a bond (`vesl-engine` `plans/port/DISPUTE-DESIGN.md` §6), on fixed
+/// keys: the holder is the demo provider, the verdict key a fourth signer.
+fn demo_slice_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
+    let p = demo_parties()?;
+    vesl_core::bond_locks::slice_lock(
+        &vesl_core::bond_locks::SliceKeys {
+            holder: p.provider,
+            verdict: pkh_of(&signer(29))?,
+            platform: p.platform,
+        },
+        vesl_core::bond_locks::SliceRole::Provider,
+        3,
+        9_216,
+        &h(44),
+    )
+}
+
+/// The drawn check's four parties (§4): the buyer's check key, the platform, its verdict
+/// key and the checker.
+fn demo_check_parties() -> Result<vesl_core::check_locks::CheckParties> {
+    Ok(vesl_core::check_locks::CheckParties {
+        buyer_c: pkh_of(&signer(13))?,
+        platform: pkh_of(&signer(23))?,
+        verdict: pkh_of(&signer(29))?,
+        checker: pkh_of(&signer(31))?,
+    })
+}
+
 /// A digest carried as note-data the way the provider note carries its three facts —
 /// ⚖️ a Hoon list of five field elements (`plans/port/PROGRAM.md`, ruled 2026-09-19).
 /// ⚑ The encoder itself lives in `vesl-agent-protocol` (`job_note_data.rs`), above this
@@ -537,7 +565,10 @@ pub fn note_shapes() -> Result<Vec<NoteShape>> {
 }
 
 /// One LOCK whose `hash:lock` the two implementations are compared on — the
-/// escrow flow's three notes (`vesl-engine` `plans/port/STEP4.md` §10).
+/// escrow flow's three notes (`vesl-engine` `plans/port/STEP4.md` §10), and since
+/// `PT-13` the bond's slice, a slash's two outputs and a check's three notes
+/// (`plans/port/DISPUTE-DESIGN.md` §12) — two-branch locks and ABSOLUTE `%tim`
+/// bounds among them, shapes no earlier lock of ours used.
 ///
 /// ⚑ Their roots are computed on the Rust side by `nockchain-types`' own hashing,
 /// but the COMPOSITION — which primitives, in which order, under which arity — is
@@ -574,6 +605,59 @@ pub fn lock_shapes() -> Result<Vec<LockShape>> {
             lock: demo_provider_note_lock()?,
             why: "the provider note: pay after the window, clawback inside it, three facts \
                   in the reserved branch",
+        },
+        LockShape {
+            name: "lock-slice",
+            lock: demo_slice_lock()?,
+            why: "a bond slice: two 2-of-2s, a fallback behind the slice's life, and the terms \
+                  beside a slot that is not a digest",
+        },
+        LockShape {
+            name: "lock-held",
+            lock: vesl_core::bond_locks::held_lock(&demo_parties()?.provider, 1_248, &h(44))?,
+            why: "a slash's change: a TWO-branch lock, the holder behind a relative minimum",
+        },
+        LockShape {
+            name: "lock-reward",
+            lock: vesl_core::bond_locks::reward_lock(&pkh_of(&signer(29))?, &h(41), &h(43))?,
+            why: "a slash's reward: a bare 1-of-1 beside the job's facts, two branches",
+        },
+        LockShape {
+            name: "lock-ticket",
+            lock: vesl_core::check_locks::ticket_lock(
+                &demo_check_parties()?,
+                100_540,
+                101_103,
+                &vesl_core::check_locks::CheckFacts {
+                    salted_digest: h(45),
+                    weight_root: h(42),
+                },
+            )?,
+            why: "a check's ticket: every deadline an ABSOLUTE height — the first this fleet set",
+        },
+        LockShape {
+            name: "lock-vouch",
+            lock: vesl_core::check_locks::vouch_note_lock(
+                &demo_check_parties()?,
+                100_000,
+                1_152,
+                &h(45),
+                &h(43),
+            )?,
+            why: "a checker's vouch: pay behind an ABSOLUTE minimum, clawback behind an absolute \
+                  maximum",
+        },
+        LockShape {
+            name: "lock-demand",
+            lock: vesl_core::check_locks::demand_lock(
+                &demo_parties()?.provider,
+                &pkh_of(&signer(31))?,
+                24,
+                &h(45),
+                &h(43),
+                2,
+            )?,
+            why: "a demand: answer inside the window, expiry after it, the round beside the facts",
         },
     ])
 }

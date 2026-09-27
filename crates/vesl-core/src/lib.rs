@@ -10,6 +10,8 @@
 //! Callers pick the primitive they need. Mint users never touch the kernel.
 //! Forge users get the full pipeline.
 
+pub mod bond_locks;
+pub mod check_locks;
 pub mod config;
 pub mod fee;
 pub mod graft_pokes;

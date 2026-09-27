@@ -3,9 +3,17 @@
   "generated_by": "vesl-labs/services/chain/examples/regen_parity_fixture.rs",
   "kernel_jam_sha256": "c844e5ebfd00713da8c354c0e40c6bb5a9343698c38491b79d24e6a4edfd3848",
   "locks": {
+    "lock-demand": {
+      "lock_root": "7Dw6t9X57Ep3CG3MP3G43Yb12Dmznuq2eebkdfoVXf46UAmN9VLAjc2",
+      "why": "a demand: answer inside the window, expiry after it, the round beside the facts"
+    },
     "lock-funding": {
       "lock_root": "7DN4A73hFZTbVfC2mUB8zmKHt8e58b6g3q2NpZsCzurubH85BVsxwLi",
       "why": "the buyer's funding note: a 2-of-2, a 1-of-1 behind a relative minimum, the facts beside a burn, and padding"
+    },
+    "lock-held": {
+      "lock_root": "AbE7hByDRUEVmSdCNYQQSdxDnpoKN7UpeM7p3aCnwkaWAQGLUr23Ra",
+      "why": "a slash's change: a TWO-branch lock, the holder behind a relative minimum"
     },
     "lock-job": {
       "lock_root": "AAu56xGRbVqt6BgYWNwkqhRJ8DBUFyFueajpfAR431ZwCt29uLzGmBq",
@@ -14,6 +22,22 @@
     "lock-provider-note": {
       "lock_root": "5xubbWG1feDFky6wctf4Ni9STEPmrjHQqyuwh6MoStnQ8T9Xk2QBVER",
       "why": "the provider note: pay after the window, clawback inside it, three facts in the reserved branch"
+    },
+    "lock-reward": {
+      "lock_root": "36hEW6SceSc7TpvL3jGaq5iwHkA3Q7y1cn5sDRgPfBuTgqBnqBJRiHZ",
+      "why": "a slash's reward: a bare 1-of-1 beside the job's facts, two branches"
+    },
+    "lock-slice": {
+      "lock_root": "6y7oN8TMHiSSxjiWgWtCKZxU2nzfUG8GqsLeFSCPAeNjV8PzYzNXsBr",
+      "why": "a bond slice: two 2-of-2s, a fallback behind the slice's life, and the terms beside a slot that is not a digest"
+    },
+    "lock-ticket": {
+      "lock_root": "6LM1MTst3ryrfGpnmRW1gk8fD9VDi3drMe37XvDj6xFnrtSDyRxfs6u",
+      "why": "a check's ticket: every deadline an ABSOLUTE height — the first this fleet set"
+    },
+    "lock-vouch": {
+      "lock_root": "7k1CJaHQicqymNHysEth2jsh2v6rkZPPWkHEJjE3pbSYNxEDgaSAAjj",
+      "why": "a checker's vouch: pay behind an ABSOLUTE minimum, clawback behind an absolute maximum"
     }
   },
   "nockchain_rev": "0626e6ab5a2aeb8313a052d878792c6b575669bd",

@@ -398,7 +398,10 @@ fn the_rust_note_hash_still_matches_the_kernels_own_answer() {
 
 /// ⛔ **THE LOCKS THIS CORPUS COVERS, WRITTEN OUT** — `DECLARED`'s rule, for
 /// `vesl_parity_corpus::lock_shapes`.
-const DECLARED_LOCKS: [&str; 3] = ["lock-funding", "lock-job", "lock-provider-note"];
+const DECLARED_LOCKS: [&str; 9] = [
+    "lock-funding", "lock-job", "lock-provider-note", "lock-slice", "lock-held", "lock-reward",
+    "lock-ticket", "lock-vouch", "lock-demand",
+];
 
 /// ⚖️ `vesl-engine` `plans/port/STEP4.md` §10 — the escrow flow's three notes, as
 /// `vesl_core::job_locks` composes them, against the kernel's own `hash:lock`.
