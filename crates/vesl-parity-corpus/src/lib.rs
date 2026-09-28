@@ -260,12 +260,13 @@ fn demo_provider_note_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock>
 }
 
 /// A provider SLICE of a bond (`vesl-engine` `plans/port/DISPUTE-DESIGN.md` §6), on fixed
-/// keys: the holder is the demo provider, the verdict key a fourth signer.
+/// keys: the holder is the demo provider, the verdict key a fourth signer, the slasher a fifth.
 fn demo_slice_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     let p = demo_parties()?;
     vesl_core::bond_locks::slice_lock(
         &vesl_core::bond_locks::SliceKeys {
             holder: p.provider,
+            slasher: pkh_of(&signer(37))?,
             verdict: pkh_of(&signer(29))?,
             platform: p.platform,
         },

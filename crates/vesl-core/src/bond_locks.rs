@@ -12,7 +12,7 @@
 //! a long life.*
 //!
 //! ```text
-//! SLICE   1 SLASH     [%pkh 2 {holder, verdict}]
+//! SLICE   1 SLASH     [%pkh 2 {slasher, verdict}]
 //!         2 EXIT      [%pkh 2 {holder, platform}]
 //!         3 FALLBACK  [%pkh 1 {holder}] AND [%tim rel.min = t_life]
 //!         4 RESERVED  [%brn]            AND [%hax {terms, slot(role, index)}]
@@ -29,10 +29,15 @@
 //! ⚑ **Why each rule.**
 //! - `holder` is the provider for a provider slice and the checker for a checker slice
 //!   (ruling 64: a separate bond, the same shape). `verdict` is the platform's verdict key
-//!   `Kv` (ruling 69), `platform` its funding key `Kf`. ⛔ The three are refused equal: with
+//!   `Kv` (ruling 69), `platform` its funding key `Kf`. ⛔ The four are refused equal: with
 //!   `verdict == platform`, SLASH and EXIT name one pair, and `sig-hash` does not cover the
 //!   branch — an exit signature would satisfy the slash and the reverse.
-//! - ⛔ **Nobody moves a slice alone before `t_life`.** SLASH needs the holder's advance
+//! - ⛔ **`slasher` is the holder's SLASH-ONLY key** (⚖️ owner, 2026-09-27, `vesl-engine`
+//!   `plans/port/AUDIT.md` H2), named in no other branch. While SLASH named `holder`, a stored
+//!   advance slash signature satisfied EXIT's holder half, so `Kf` alone completed a slash, and
+//!   FALLBACK after `t_life` needed nothing more. The holder's IDENTITY is in the terms; this
+//!   key signs, it does not identify.
+//! - ⛔ **Nobody moves a slice alone before `t_life`.** SLASH needs the slasher's advance
 //!   signature (§6a) AND the verdict; EXIT needs the holder AND the platform, which signs it
 //!   only with no job open on that slice (policy); FALLBACK is the holder's escape if the
 //!   platform disappears, and the platform assigns no job whose window ends after
@@ -105,11 +110,13 @@ const fn cord(b: &[u8; 8]) -> u64 {
     u64::from_le_bytes(*b)
 }
 
-/// The three keys a slice names.
+/// The four keys a slice names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SliceKeys {
     /// The provider (provider slice) or the checker (checker slice) that posted it.
     pub holder: Hash,
+    /// The holder's slash-only key — SLASH's, and no other branch's.
+    pub slasher: Hash,
     /// The platform's verdict key `Kv` (ruling 69) — the oracle, temporary.
     pub verdict: Hash,
     /// The platform's funding key `Kf`.
@@ -143,7 +150,7 @@ pub fn slice_lock(
     refuse_zero_window(t_life, "the slice's life t_life", "FALLBACK's rel.min")?;
     let slash = SpendCondition::new(vec![pkh_conjunct(
         2,
-        vec![keys.holder.clone(), keys.verdict.clone()],
+        vec![keys.slasher.clone(), keys.verdict.clone()],
     )?]);
     let exit = SpendCondition::new(vec![pkh_conjunct(
         2,
@@ -211,8 +218,19 @@ fn two(a: SpendCondition, b: SpendCondition) -> Lock {
 
 fn refuse_distinct_slice_keys(k: &SliceKeys) -> anyhow::Result<()> {
     refuse_same_key(
-        &k.holder, &k.verdict, "the holder", "the verdict key", "SLASH",
+        &k.slasher, &k.verdict, "the slasher", "the verdict key", "SLASH",
     )?;
+    refuse_same_key(
+        &k.holder, &k.verdict, "the holder", "the verdict key", "EXIT",
+    )?;
+    for (other, name) in [(&k.holder, "the holder"), (&k.platform, "the platform")] {
+        anyhow::ensure!(
+            &k.slasher != other,
+            "the slasher and {name} are the same key: a stored slash signature would then \
+             satisfy another branch, and sig-hash does not cover which branch is revealed. \
+             Refusing to build it."
+        );
+    }
     refuse_same_key(&k.holder, &k.platform, "the holder", "the platform", "EXIT")?;
     anyhow::ensure!(
         k.verdict != k.platform,
@@ -238,6 +256,7 @@ mod tests {
     fn keys() -> SliceKeys {
         SliceKeys {
             holder: h(30),
+            slasher: h(35),
             verdict: h(70),
             platform: h(20),
         }
@@ -272,7 +291,8 @@ mod tests {
         assert!(
             matches!(&b[3].0[..], [LockPrimitive::Burn, LockPrimitive::Hax(x)] if x.0.iter().count() == 2)
         );
-        assert_eq!(pkh_keys(&b[0]), vec![k.holder.clone(), k.verdict.clone()]);
+        // ⛔ H2: SLASH names the slasher, never the holder; EXIT and FALLBACK never the slasher.
+        assert_eq!(pkh_keys(&b[0]), vec![k.slasher.clone(), k.verdict.clone()]);
         assert_eq!(pkh_keys(&b[1]), vec![k.platform.clone(), k.holder.clone()]);
         assert_eq!(pkh_keys(&b[2]), vec![k.holder.clone()]);
     }
@@ -338,6 +358,10 @@ mod tests {
         for q in [
             SliceKeys {
                 holder: h(31),
+                ..k.clone()
+            },
+            SliceKeys {
+                slasher: h(36),
                 ..k.clone()
             },
             SliceKeys {
@@ -408,6 +432,22 @@ mod tests {
                 ..k.clone()
             }))
             .contains("the holder and the verdict key")
+        );
+        for other in [k.holder.clone(), k.platform.clone()] {
+            assert!(
+                msg(s(&SliceKeys {
+                    slasher: other,
+                    ..k.clone()
+                }))
+                .contains("a stored slash signature would then satisfy another branch")
+            );
+        }
+        assert!(
+            msg(s(&SliceKeys {
+                slasher: k.verdict.clone(),
+                ..k.clone()
+            }))
+            .contains("the slasher and the verdict key")
         );
         assert!(
             msg(s(&SliceKeys {
