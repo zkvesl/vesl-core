@@ -40,8 +40,9 @@
 //! - ⛔ **Nobody moves a slice alone before `t_life`.** SLASH needs the slasher's advance
 //!   signature (§6a) AND the verdict; EXIT needs the holder AND the platform, which signs it
 //!   only with no job open on that slice (policy); FALLBACK is the holder's escape if the
-//!   platform disappears, and the platform assigns no job whose window ends after
-//!   `t_life − 96` (policy, §6's gate).
+//!   platform disappears, and the platform backs no job or vouch with a slice whose
+//!   `origin + t_life − 96` does not outlast that liability's window (policy, §6's gate —
+//!   `vesl-labs` `workpool::bond_gate::backs_until`, at the lease, the capture and the draw).
 //! - ⚑ Two outputs to one address in one transaction MERGE (`tx-engine-1.hoon:2362-2385`),
 //!   and a posting mints every slice in ONE transaction (ruling 75) ⇒ RESERVED carries the
 //!   slice's `index`, so every slice of a posting has its own address. The same slot carries
