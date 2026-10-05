@@ -2121,12 +2121,17 @@ mod tests {
         }
     }
 
+    fn escrow_serve() -> crate::job_locks::ServeFacts {
+        let h = |n: u64| nockchain_types::tx_engine::common::Hash::from_limbs(&[n, n + 1, n + 2, n + 3, n + 4]);
+        crate::job_locks::ServeFacts { input: h(11), ids: h(21), anchor: h(31), closing: h(41), model_pin: h(51) }
+    }
+
     #[test]
     fn the_escrow_flows_notes_assemble_from_exactly_the_parties_each_branch_names() {
         use crate::job_locks::*;
         let (buyer_j, platform, provider, p) = escrow_keys();
         let f = escrow_facts();
-        let rr = nockchain_types::tx_engine::common::Hash::from_limbs(&[11, 12, 13, 14, 15]);
+        let rr = escrow_serve();
         let w = |lock: &nockchain_types::tx_engine::v1::tx::Lock, b: u64, s: &[BranchSigner]| {
             build_branch_witness(lock, b, 10, 1, s, &sh(), vec![])
         };
@@ -2166,7 +2171,7 @@ mod tests {
         use crate::job_locks::*;
         let (_b, platform, _pr, p) = escrow_keys();
         let f = escrow_facts();
-        let rr = nockchain_types::tx_engine::common::Hash::from_limbs(&[11, 12, 13, 14, 15]);
+        let rr = escrow_serve();
         for (lock, b) in [
             (funding_lock(&p.buyer_j, &p.platform, 50, &f).unwrap(), FUNDING_BRANCH_TAG),
             (job_lock(&p, 20, &f).unwrap(), JOB_BRANCH_TAG),

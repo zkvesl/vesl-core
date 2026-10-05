@@ -20,8 +20,8 @@
       "why": "the job note: a 2-of-2 behind a relative MAXIMUM — a %tim leg no earlier lock of ours set"
     },
     "lock-provider-note": {
-      "lock_root": "5xubbWG1feDFky6wctf4Ni9STEPmrjHQqyuwh6MoStnQ8T9Xk2QBVER",
-      "why": "the provider note: pay after the window, clawback inside it, three facts in the reserved branch"
+      "lock_root": "3JMBjkWsUTcGZqwCsHXnBt6AdgBPwoSW54ko3a4yuGpDr1gP4mZ8jMJ",
+      "why": "the provider note: pay after the window, clawback inside it, the job's facts and its closing's in the reserved branch"
     },
     "lock-reward": {
       "lock_root": "36hEW6SceSc7TpvL3jGaq5iwHkA3Q7y1cn5sDRgPfBuTgqBnqBJRiHZ",
@@ -86,9 +86,9 @@
       "why": "what a buyer's wallet posts: one funding note naming the job's facts, and the change"
     },
     "job-capture-3seed-pinned": {
-      "sig_hash": "3B5nBQKNKUuENMuh7D2qpqCHJq6jRJ9jsHjHe9MATtTZmyNQb6xWSXx",
-      "tx_id": "2xD7g3QPR1yJELKGxztptTtNENEbtQdZg8PA6b86E1Gz4EUXNdQ6u3t",
-      "why": "the escrow flow's capture: the provider note with its three facts, the commission, and the buyer's change"
+      "sig_hash": "A2PepSsZ1GRSFPPEEr8CVVcUYDeM9jzgcpnN2Cy69VJwNTf4kmfNpPf",
+      "tx_id": "6n7oLnHzRgdn9mi2hAMC7sFjbBMMQtHxs7F5vUSeQWnCruW4UZnhdHN",
+      "why": "the escrow flow's capture: the provider note with the job's facts and what its signed closing fixed, the commission, and the buyer's change"
     },
     "single-seed-notedata-manual-jam": {
       "sig_hash": "67gukKFhReTVEEKR7s9GtCCCoPKEoXzuANW8SN1EeqpqYsQ9cT2zJnF",

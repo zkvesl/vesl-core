@@ -254,9 +254,21 @@ fn demo_job_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     vesl_core::job_locks::job_lock(&demo_parties()?, 24, &demo_facts())
 }
 
+/// ⭐ `vesl-engine` `PT-24` (⚖️ D61): what the provider's signed closing fixed, on fixed operands — the salted input,
+/// ids and anchor roots, the closing value over `[P c reason]`, and the order's model pin.
+fn demo_serve_facts() -> vesl_core::job_locks::ServeFacts {
+    vesl_core::job_locks::ServeFacts {
+        input: h(43),
+        ids: h(44),
+        anchor: h(45),
+        closing: h(46),
+        model_pin: h(47),
+    }
+}
+
 /// The PROVIDER note, from the shipped builder, at the live window (1.152, ruling 43).
 fn demo_provider_note_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
-    vesl_core::job_locks::provider_note_lock(&demo_parties()?, 1_152, &demo_facts(), &h(43))
+    vesl_core::job_locks::provider_note_lock(&demo_parties()?, 1_152, &demo_facts(), &demo_serve_facts())
 }
 
 /// A provider SLICE of a bond (`vesl-engine` `plans/port/DISPUTE-DESIGN.md` §6), on fixed
@@ -288,7 +300,7 @@ fn demo_check_parties() -> Result<vesl_core::check_locks::CheckParties> {
     })
 }
 
-/// A digest carried as note-data the way the provider note carries its three facts —
+/// A digest carried as note-data the way the provider note carries its facts —
 /// ⚖️ a Hoon list of five field elements (`plans/port/PROGRAM.md`, ruled 2026-09-19).
 /// ⚑ The encoder itself lives in `vesl-agent-protocol` (`job_note_data.rs`), above this
 /// crate; this is the same noun, built here on fixed operands.
@@ -296,6 +308,18 @@ fn digest_entry(key: &str, d: &Hash) -> NoteDataEntry {
     let mut noun = OwnedBasedNoun::Atom(Belt(0));
     for limb in d.to_array().iter().rev() {
         noun = OwnedBasedNoun::Cell(Box::new(OwnedBasedNoun::Atom(Belt(*limb))), Box::new(noun));
+    }
+    NoteDataEntry {
+        key: key.to_string(),
+        value: NoteDataValue::Noun(noun),
+    }
+}
+
+/// A short list of atoms carried as note-data — the provider note's closing `[P c reason]`.
+fn list_entry(key: &str, atoms: &[u64]) -> NoteDataEntry {
+    let mut noun = OwnedBasedNoun::Atom(Belt(0));
+    for a in atoms.iter().rev() {
+        noun = OwnedBasedNoun::Cell(Box::new(OwnedBasedNoun::Atom(Belt(*a))), Box::new(noun));
     }
     NoteDataEntry {
         key: key.to_string(),
@@ -456,8 +480,10 @@ pub fn shapes() -> Result<Vec<Shape>> {
 
     // ── 7 · the capture: provider note (with its facts) + commission + change ─
     // ⚖️ Rulings 41–44: the capture pays out AT the serve. The provider note
-    // carries the three facts as note-data under the job note's OWN version key,
-    // each digest a list of five field elements.
+    // carries the job's facts as note-data under the job note's OWN version key,
+    // each digest a list of five field elements — ⭐ `PT-24` (⚖️ D61): the order, the
+    // weight root, and what the signed closing fixed (`vesl-agent-protocol`
+    // `job_note_data.rs`, version 2).
     out.push(Shape {
         name: "job-capture-3seed-pinned",
         seeds: vesl_core::settle::build_output_seeds(
@@ -465,10 +491,14 @@ pub fn shapes() -> Result<Vec<Shape>> {
                 vesl_core::settle::OutputLine {
                     lock_root: vesl_core::lock::lock_root(&demo_provider_note_lock()?)?,
                     note_data: NoteData::new(vec![
-                        opaque_entry("vjob-v", 1),
+                        opaque_entry("vjob-v", 2),
                         digest_entry("vint-od", &h(41)),
                         digest_entry("vint-wr", &h(42)),
-                        digest_entry("vint-rr", &h(43)),
+                        digest_entry("vjob-in", &h(43)),
+                        digest_entry("vjob-id", &h(44)),
+                        digest_entry("vjob-an", &h(45)),
+                        list_entry("vjob-cl", &[12, 15, 1]),
+                        digest_entry("vjob-mp", &h(47)),
                     ]),
                     amount: 855_000,
                 },
@@ -491,8 +521,8 @@ pub fn shapes() -> Result<Vec<Shape>> {
         signer: signer(11),
         is_coinbase: true,
         input_last: h(5),
-        why: "the escrow flow's capture: the provider note with its three facts, the \
-              commission, and the buyer's change",
+        why: "the escrow flow's capture: the provider note with the job's facts and what \
+              its signed closing fixed, the commission, and the buyer's change",
     });
 
     Ok(out)
@@ -604,8 +634,8 @@ pub fn lock_shapes() -> Result<Vec<LockShape>> {
         LockShape {
             name: "lock-provider-note",
             lock: demo_provider_note_lock()?,
-            why: "the provider note: pay after the window, clawback inside it, three facts \
-                  in the reserved branch",
+            why: "the provider note: pay after the window, clawback inside it, the job's \
+                  facts and its closing's in the reserved branch",
         },
         LockShape {
             name: "lock-slice",

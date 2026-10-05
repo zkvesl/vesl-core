@@ -197,17 +197,20 @@ pub fn held_lock(holder: &Hash, hold: u64, terms: &Hash) -> anyhow::Result<Lock>
 /// the provider signs the slash at capture, so today the verdict key holds it and pays the
 /// drawn checker (no trust beyond ruling 69); in the target, a proof that the claimant holds
 /// the drawn ticket replaces the key (stub register S1).
+///
+/// `statement` is what the slash convicts: a streamed job's signed closing digest (`vesl-engine`
+/// `PT-24`, ⚖️ D64), or a voucher's vouched root.
 pub fn reward_lock(
     verdict: &Hash,
     order_digest: &Hash,
-    record_root: &Hash,
+    statement: &Hash,
 ) -> anyhow::Result<Lock> {
     let pay = SpendCondition::new(vec![pkh_conjunct(1, vec![verdict.clone()])?]);
     let tag = SpendCondition::new(vec![
         LockPrimitive::Burn,
         facts_hax(&[
             ("the order digest", order_digest.clone()),
-            ("the record root", record_root.clone()),
+            ("the convicted statement", statement.clone()),
         ])?,
     ]);
     Ok(two(pay, tag))

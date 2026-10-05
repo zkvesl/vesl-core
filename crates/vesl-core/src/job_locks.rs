@@ -19,7 +19,8 @@
 //!               4 TAG       [%brn]              AND [%hax {order_digest, weight_root}]
 //! N  provider   1 PAY       [%pkh 1 {provider}] AND [%tim rel.min = c]
 //!               2 CLAWBACK  [%pkh 2 {buyer_j, platform}] AND [%tim rel.max = c - 1]
-//!               3 RESERVED  [%brn]              AND [%hax {order_digest, weight_root, record_root}]
+//!               3 RESERVED  [%brn]              AND [%hax {order_digest, weight_root, ŝ_input, ŝ_ids,
+//!                                                         ŝ_anchor, closing, model_pin}]
 //!               4 padding   [%brn]
 //! ```
 //!
@@ -87,7 +88,7 @@ pub const PROVIDER_BRANCH_PAY: u64 = 1;
 /// See [`PROVIDER_BRANCH_PAY`].
 pub const PROVIDER_BRANCH_CLAWBACK: u64 = 2;
 /// See [`PROVIDER_BRANCH_PAY`]. Unspendable today: the slot a future fraud-proof branch
-/// reads — the three facts of the job, in the address.
+/// reads — the job's facts and its serve's ([`ServeFacts`]), in the address.
 pub const PROVIDER_BRANCH_RESERVED: u64 = 3;
 /// See [`PROVIDER_BRANCH_PAY`]. Pure padding.
 pub const PROVIDER_BRANCH_PADDING: u64 = 4;
@@ -102,11 +103,24 @@ pub struct JobParties {
 }
 
 /// The facts the escrow flow writes into every address it builds: what was ordered, and
-/// which weights. The provider note adds the record root ([`provider_note_lock`]).
+/// which weights. The provider note adds the serve's ([`ServeFacts`], [`provider_note_lock`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobFacts {
     pub order_digest: Hash,
     pub weight_root: Hash,
+}
+
+/// ⭐ `vesl-engine` `PT-24` (⚖️ D61, D63, `plans/port/PT24.md` §1): what the provider fixed as it served, from its
+/// signed closing — the salted roots of the committed prompt ids, the served words and the anchors
+/// (`VESL-ANCHORS-v1` §4), the closing value `hash-varlen([1, P_lo, P_hi, c_lo, c_hi, reason])`, and the order's
+/// model pin. Each is its own fact in the provider note's address (D63: no digest of digests).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServeFacts {
+    pub input: Hash,
+    pub ids: Hash,
+    pub anchor: Hash,
+    pub closing: Hash,
+    pub model_pin: Hash,
 }
 
 /// The FUNDING note — ⚖️ ruling 42's first box. The buyer builds it; it names no provider,
@@ -171,13 +185,13 @@ pub fn job_lock(parties: &JobParties, d_j: u64, facts: &JobFacts) -> anyhow::Res
 /// paid from `c` on. 1.152 blocks on the live chain (ruling 43); ⛔ an operand of the
 /// address and a PER-NETWORK value (ruling 49).
 ///
-/// `record_root` is the provider's working, from its signed release — the third fact, which
-/// only exists once the job has been served.
+/// `serve` is what the provider fixed as it served, from its signed closing — facts that exist only once the job
+/// has been served.
 pub fn provider_note_lock(
     parties: &JobParties,
     c: u64,
     facts: &JobFacts,
-    record_root: &Hash,
+    serve: &ServeFacts,
 ) -> anyhow::Result<Lock> {
     refuse_distinct_parties(parties, "the provider note")?;
     anyhow::ensure!(
@@ -197,7 +211,7 @@ pub fn provider_note_lock(
     ]);
     let reserved = SpendCondition::new(vec![
         LockPrimitive::Burn,
-        facts_hax(&facts_list(facts, Some(record_root)))?,
+        facts_hax(&facts_list(facts, Some(serve)))?,
     ]);
     let padding = SpendCondition::new(vec![LockPrimitive::Burn]);
     Ok(four(pay, clawback, reserved, padding))
@@ -243,13 +257,17 @@ pub(crate) fn four(a: SpendCondition, b: SpendCondition, c: SpendCondition, d: S
     })
 }
 
-fn facts_list(facts: &JobFacts, record_root: Option<&Hash>) -> Vec<(&'static str, Hash)> {
+fn facts_list(facts: &JobFacts, serve: Option<&ServeFacts>) -> Vec<(&'static str, Hash)> {
     let mut v = vec![
         ("the order digest", facts.order_digest.clone()),
         ("the weight root", facts.weight_root.clone()),
     ];
-    if let Some(r) = record_root {
-        v.push(("the record root", r.clone()));
+    if let Some(s) = serve {
+        v.push(("the salted input root", s.input.clone()));
+        v.push(("the salted ids root", s.ids.clone()));
+        v.push(("the salted anchor root", s.anchor.clone()));
+        v.push(("the closing", s.closing.clone()));
+        v.push(("the model pin", s.model_pin.clone()));
     }
     v
 }
@@ -338,6 +356,10 @@ mod tests {
             provider: h(30),
         }
     }
+    fn serve() -> ServeFacts {
+        ServeFacts { input: h(60), ids: h(61), anchor: h(62), closing: h(63), model_pin: h(64) }
+    }
+
     fn facts() -> JobFacts {
         JobFacts {
             order_digest: h(40),
@@ -377,7 +399,7 @@ mod tests {
         );
         assert!(matches!(&b[3].0[..], [LockPrimitive::Burn, LockPrimitive::Hax(_)]));
 
-        let n = provider_note_lock(&parties(), 1152, &facts(), &h(60)).unwrap();
+        let n = provider_note_lock(&parties(), 1152, &facts(), &serve()).unwrap();
         let b = branches(&n);
         assert!(
             matches!(&b[0].0[..], [LockPrimitive::Pkh(p), LockPrimitive::Tim(t)]
@@ -387,7 +409,7 @@ mod tests {
             matches!(&b[1].0[..], [LockPrimitive::Pkh(p), LockPrimitive::Tim(t)]
             if p.m == 2 && t.rel.max == Some(BlockHeightDelta(Belt(1151))))
         );
-        assert!(matches!(&b[2].0[..], [LockPrimitive::Burn, LockPrimitive::Hax(x)] if x.0.iter().count() == 3));
+        assert!(matches!(&b[2].0[..], [LockPrimitive::Burn, LockPrimitive::Hax(x)] if x.0.iter().count() == 7));
         assert!(matches!(&b[3].0[..], [LockPrimitive::Burn]));
     }
 
@@ -408,7 +430,7 @@ mod tests {
         assert_eq!(keys(&j[0]), vec![p.platform.clone(), p.provider.clone()]);
         assert_eq!(keys(&j[1]), vec![p.buyer_j.clone(), p.platform.clone()]);
         assert_eq!(keys(&j[2]), vec![p.buyer_j.clone()]);
-        let n = branches(&provider_note_lock(&p, 1152, &facts(), &h(60)).unwrap());
+        let n = branches(&provider_note_lock(&p, 1152, &facts(), &serve()).unwrap());
         assert_eq!(keys(&n[0]), vec![p.provider.clone()]);
         assert_eq!(keys(&n[1]), vec![p.buyer_j.clone(), p.platform.clone()]);
         let f = branches(&funding_lock(&p.buyer_j, &p.platform, 500, &facts()).unwrap());
@@ -421,7 +443,7 @@ mod tests {
         let locks = [
             funding_lock(&h(10), &h(20), 500, &facts()).unwrap(),
             job_lock(&parties(), 90, &facts()).unwrap(),
-            provider_note_lock(&parties(), 1152, &facts(), &h(60)).unwrap(),
+            provider_note_lock(&parties(), 1152, &facts(), &serve()).unwrap(),
         ];
         for lock in &locks {
             for k in 1..=4 {
@@ -461,18 +483,28 @@ mod tests {
         assert_ne!(base, root(job_lock(&p, 90, &f2)));
         assert_ne!(base, root(job_lock(&p, 90, &f3)));
 
-        let base = root(provider_note_lock(&p, 1152, &f, &h(60)));
+        let base = root(provider_note_lock(&p, 1152, &f, &serve()));
         for q in [
             JobParties { buyer_j: other(&p.buyer_j), ..p.clone() },
             JobParties { platform: other(&p.platform), ..p.clone() },
             JobParties { provider: other(&p.provider), ..p.clone() },
         ] {
-            assert_ne!(base, root(provider_note_lock(&q, 1152, &f, &h(60))));
+            assert_ne!(base, root(provider_note_lock(&q, 1152, &f, &serve())));
         }
-        assert_ne!(base, root(provider_note_lock(&p, 1153, &f, &h(60))));
-        assert_ne!(base, root(provider_note_lock(&p, 1152, &f2, &h(60))));
-        assert_ne!(base, root(provider_note_lock(&p, 1152, &f3, &h(60))));
-        assert_ne!(base, root(provider_note_lock(&p, 1152, &f, &h(61))));
+        assert_ne!(base, root(provider_note_lock(&p, 1153, &f, &serve())));
+        assert_ne!(base, root(provider_note_lock(&p, 1152, &f2, &serve())));
+        assert_ne!(base, root(provider_note_lock(&p, 1152, &f3, &serve())));
+        // ⭐ every serve fact is in the address: any one changed moves it
+        let s = serve();
+        for other in [
+            ServeFacts { input: h(71), ..s.clone() },
+            ServeFacts { ids: h(72), ..s.clone() },
+            ServeFacts { anchor: h(73), ..s.clone() },
+            ServeFacts { closing: h(74), ..s.clone() },
+            ServeFacts { model_pin: h(75), ..s.clone() },
+        ] {
+            assert_ne!(base, root(provider_note_lock(&p, 1152, &f, &other)));
+        }
     }
 
     #[test]
@@ -482,7 +514,7 @@ mod tests {
         let p = parties();
         let f = funding_lock(&p.buyer_j, &p.platform, 90, &facts()).unwrap();
         let j = job_lock(&p, 90, &facts()).unwrap();
-        let n = provider_note_lock(&p, 90, &facts(), &h(60)).unwrap();
+        let n = provider_note_lock(&p, 90, &facts(), &serve()).unwrap();
         let roots = [&f, &j, &n].map(|l| lock_root(l).unwrap());
         assert_ne!(roots[0], roots[1]);
         assert_ne!(roots[1], roots[2]);
@@ -518,7 +550,7 @@ mod tests {
         assert!(branch_window_open(recover, since, since + 91));
         assert!(branch_window_open(&j[1], since, u64::MAX), "FAST has no clock");
 
-        let n = branches(&provider_note_lock(&parties(), 1152, &facts(), &h(60)).unwrap());
+        let n = branches(&provider_note_lock(&parties(), 1152, &facts(), &serve()).unwrap());
         let (pay, clawback) = (&n[0], &n[1]);
         assert!(branch_window_open(clawback, since, since + 1151));
         assert!(!branch_window_open(clawback, since, since + 1152));
@@ -551,7 +583,7 @@ mod tests {
         let same_pb = JobParties { provider: p.buyer_j.clone(), ..p.clone() };
         for build in [
             &(|q: &JobParties| job_lock(q, 90, &f)) as &dyn Fn(&JobParties) -> anyhow::Result<Lock>,
-            &|q: &JobParties| provider_note_lock(q, 1152, &f, &h(60)),
+            &|q: &JobParties| provider_note_lock(q, 1152, &f, &serve()),
         ] {
             assert!(msg(build(&same_bp)).contains("the buyer's job key and the platform"));
             assert!(msg(build(&same_pp)).contains("the provider and the platform are the same key"));
@@ -560,12 +592,13 @@ mod tests {
 
         assert!(msg(job_lock(&p, 0, &f)).contains("capture deadline d_j is zero"));
         assert!(msg(job_lock(&p, PRIME - 1, &f)).contains("leaves no block for RECOVER"));
-        assert!(msg(provider_note_lock(&p, 1, &f, &h(60))).contains("challenge window c = 1 is too short"));
-        assert!(msg(provider_note_lock(&p, 0, &f, &h(60))).contains("too short"));
+        assert!(msg(provider_note_lock(&p, 1, &f, &serve())).contains("challenge window c = 1 is too short"));
+        assert!(msg(provider_note_lock(&p, 0, &f, &serve())).contains("too short"));
 
         let equal = JobFacts { order_digest: h(40), weight_root: h(40) };
         assert!(msg(job_lock(&p, 90, &equal)).contains("the order digest and the weight root are the same value"));
-        assert!(msg(provider_note_lock(&p, 1152, &f, &h(50))).contains("the weight root and the record root are the same value"));
+        let echo = ServeFacts { closing: h(50), ..serve() };
+        assert!(msg(provider_note_lock(&p, 1152, &f, &echo)).contains("the weight root and the closing are the same value"));
 
         let unbased = Hash::from_limbs(&[1, 2, PRIME, 4, 5]);
         let bad = JobFacts { order_digest: unbased, ..f.clone() };

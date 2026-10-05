@@ -86,7 +86,7 @@ pub use job_locks::{
     FUNDING_BRANCH_FAST, FUNDING_BRANCH_PADDING, FUNDING_BRANCH_RECOVER, FUNDING_BRANCH_TAG,
     JOB_BRANCH_CAPTURE, JOB_BRANCH_FAST, JOB_BRANCH_RECOVER, JOB_BRANCH_TAG, JobFacts, JobParties,
     PROVIDER_BRANCH_CLAWBACK, PROVIDER_BRANCH_PADDING, PROVIDER_BRANCH_PAY,
-    PROVIDER_BRANCH_RESERVED, branch_window_open, funding_lock, job_lock, provider_note_lock,
+    PROVIDER_BRANCH_RESERVED, ServeFacts, branch_window_open, funding_lock, job_lock, provider_note_lock,
 };
 pub use lock::{
     bounty_lock, first_name_for_lock, lock_merkle_proof, lock_root, pkh_conjunct,
