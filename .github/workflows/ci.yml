@@ -16,7 +16,7 @@ on:
 # so CI checks out vesl-wallet as a sibling. Bump this when vesl-wallet
 # ships a compatible release.
 env:
-  NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
+  NOCK_PIN: 73877be29bd1fafeeade1be7b95aebb0f64d8382
   VESL_WALLET_PIN: 71e1eef93076b2ad0f2ad6320905bc8a306267c2
 
 jobs:

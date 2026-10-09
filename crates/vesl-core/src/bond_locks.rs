@@ -484,7 +484,7 @@ mod tests {
         assert!(msg(held_lock(&h(30), 0, &h(90))).contains("hold is zero"));
         assert!(
             msg(reward_lock(&h(70), &h(40), &h(40)))
-                .contains("the order digest and the record root are the same value")
+                .contains("the order digest and the convicted statement are the same value")
         );
     }
 

@@ -1,10 +1,10 @@
 //! Integration tests for the `vesl_core::signing` shim — exercises the
-//! contract that the [Belt; 8] ↔ vesl-signing UBig conversion preserves
+//! contract that the [Belt; 8] ↔ vesl-signing `Scalar` conversion preserves
 //! pre-shim semantics on every edge case the original implementation
 //! handled.
 //!
 //! The shim translates between the local `[Belt; 8]`-flavored API and
-//! `vesl-signing`'s `UBig`-based primitives. Anything that breaks the
+//! `vesl-signing`'s `Scalar`-based primitives. Anything that breaks the
 //! conversion contract (or the BIP-39 + BIP-44 path that
 //! `key_from_seed_phrase` now delegates to via `vesl-wallet`) surfaces
 //! here.

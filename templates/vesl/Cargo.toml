@@ -24,6 +24,3 @@ sha2 = "0.10"
 vesl-test       = { git = "https://github.com/zkvesl/vesl-nockup" }
 vesl-checkpoint = { git = "https://github.com/zkvesl/vesl-nockup" }
 anyhow          = "1.0"
-
-[patch.crates-io]
-ibig = { path = "../../../nockchain/crates/nockvm/rust/ibig" }

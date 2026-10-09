@@ -48,7 +48,7 @@ on:
     branches: [main]
 
 env:
-  NOCK_PIN: dfc97ecc877687fc7ca972ebc71877df6e80d92b
+  NOCK_PIN: 73877be29bd1fafeeade1be7b95aebb0f64d8382
   HONK_REV: 2bcb0b9dfd190f17252205afd1c8a067048a1ad9
 
 jobs:

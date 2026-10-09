@@ -3374,11 +3374,23 @@ dependencies = [
 
 [[package]]
 name = "ibig"
-version = "0.3.6"
+version = "0.1.17"
 dependencies = [
  "cfg-if",
  "num-traits",
  "rand 0.9.4",
+ "static_assertions",
+]
+
+[[package]]
+name = "ibig"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1fcc7f316b2c079dde77564a1360639c1a956a23fa96122732e416cb10717bb"
+dependencies = [
+ "cfg-if",
+ "num-traits",
+ "rand 0.8.6",
  "static_assertions",
 ]
 
@@ -4622,7 +4634,7 @@ dependencies = [
 
 [[package]]
 name = "murmur3"
-version = "0.5.2"
+version = "0.1.17"
 
 [[package]]
 name = "netlink-packet-core"
@@ -4700,7 +4712,7 @@ dependencies = [
 
 [[package]]
 name = "nockapp"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4720,7 +4732,7 @@ dependencies = [
  "either",
  "futures",
  "gnort",
- "ibig",
+ "ibig 0.1.17",
  "instant-acme",
  "intmap",
  "libc",
@@ -4760,7 +4772,7 @@ dependencies = [
 
 [[package]]
 name = "nockapp-grpc"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4770,7 +4782,7 @@ dependencies = [
  "futures",
  "gnort",
  "hex",
- "ibig",
+ "ibig 0.1.17",
  "nockapp",
  "nockapp-grpc-proto",
  "nockchain-libp2p-io",
@@ -4801,7 +4813,7 @@ dependencies = [
 
 [[package]]
 name = "nockapp-grpc-proto"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "glob",
@@ -4839,7 +4851,7 @@ dependencies = [
 
 [[package]]
 name = "nockchain-libp2p-io"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "async-trait",
  "bs58",
@@ -4853,7 +4865,7 @@ dependencies = [
  "gnort",
  "hickory-proto",
  "hickory-resolver",
- "ibig",
+ "ibig 0.1.17",
  "libp2p",
  "nockapp",
  "nockvm",
@@ -4870,14 +4882,14 @@ dependencies = [
 
 [[package]]
 name = "nockchain-math"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "argon2",
  "arrayref",
  "bs58",
  "bytes",
  "either",
- "ibig",
+ "ibig 0.1.17",
  "nockvm",
  "nockvm_macros",
  "noun-serde",
@@ -4903,14 +4915,14 @@ dependencies = [
 
 [[package]]
 name = "nockchain-types"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "alloy",
  "anyhow",
  "bs58",
  "bytes",
  "hex",
- "ibig",
+ "ibig 0.1.17",
  "nockapp",
  "nockchain-math",
  "nockvm",
@@ -4925,7 +4937,7 @@ dependencies = [
 
 [[package]]
 name = "nockvm"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "autotools",
  "bincode",
@@ -4933,7 +4945,7 @@ dependencies = [
  "bytes",
  "cc",
  "either",
- "ibig",
+ "ibig 0.1.17",
  "intmap",
  "lazy_static",
  "libc",
@@ -4955,13 +4967,13 @@ dependencies = [
 
 [[package]]
 name = "nockvm_crypto"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "aes",
  "aes-siv",
  "curve25519-dalek",
  "ed25519-dalek",
- "ibig",
+ "ibig 0.1.17",
  "sha1",
  "sha2",
  "x25519-dalek",
@@ -4969,7 +4981,7 @@ dependencies = [
 
 [[package]]
 name = "nockvm_macros"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -5011,10 +5023,10 @@ dependencies = [
 
 [[package]]
 name = "noun-serde"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "bytes",
- "ibig",
+ "ibig 0.1.17",
  "nockvm",
  "noun-serde-derive",
  "thiserror 2.0.18",
@@ -5023,7 +5035,7 @@ dependencies = [
 
 [[package]]
 name = "noun-serde-derive"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "nockvm",
  "proc-macro2",
@@ -8080,7 +8092,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "clap",
- "ibig",
+ "ibig 0.1.17",
  "nock-noun-rs",
  "nockapp",
  "nockchain-client-rs",
@@ -8114,10 +8126,10 @@ dependencies = [
 
 [[package]]
 name = "vesl-signing"
-version = "0.1.0-beta.1"
+version = "0.2.0"
 dependencies = [
  "bs58",
- "ibig",
+ "ibig 0.3.6",
  "once_cell",
  "serde",
  "serde_json",
@@ -8126,11 +8138,10 @@ dependencies = [
 
 [[package]]
 name = "vesl-wallet"
-version = "0.1.0-beta.1"
+version = "0.2.0"
 dependencies = [
  "bip39",
  "hmac",
- "ibig",
  "once_cell",
  "sha2",
  "thiserror 1.0.69",
@@ -8141,7 +8152,7 @@ dependencies = [
 
 [[package]]
 name = "vesl-wallet-spec"
-version = "0.1.0-beta.1"
+version = "0.2.0"
 
 [[package]]
 name = "virtue"
@@ -8181,7 +8192,7 @@ dependencies = [
 
 [[package]]
 name = "wallet-tx-builder"
-version = "0.1.15"
+version = "0.1.17"
 dependencies = [
  "bytes",
  "nockapp",

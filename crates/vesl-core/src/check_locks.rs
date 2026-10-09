@@ -125,8 +125,8 @@ pub fn check_funding_lock(
 }
 
 /// The TICKET `J_c`, created by the co-signed move out of `F_c` once the draw names the
-/// checker. `report_by` is the absolute height of the report deadline (the request's height
-/// + 240, §3) and `claim_by` the absolute height after which no claim is included (`N`'s
+/// checker. `report_by` is the absolute height of the report deadline (the request's height +
+/// 240, §3) and `claim_by` the absolute height after which no claim is included (`N`'s
 /// origin + 1.103, §3); a claim may land after the report, never before it is due, so
 /// `claim_by` must lie beyond `report_by`. ⛔ Both are operands of the address.
 pub fn ticket_lock(

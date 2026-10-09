@@ -22,17 +22,3 @@ nockchain-tip5-rs = { path = "../../crates/nockchain-tip5-rs" }
 
 tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
 sha2 = "0.10"
-
-# vesl-signing (pulled transitively via vesl-core) declares
-# `ibig = "0.3"` from crates.io. vesl-core's signing path uses the
-# nockvm-vendored ibig at ../../nockchain/crates/nockvm/rust/ibig.
-# Without this patch, Cargo treats the path-dep and crates.io as
-# distinct UBig types and `vesl-core::signing::ubig_to_belts8`
-# becomes uncallable. Mirrors `vesl-nockup/Cargo.toml:36-37`'s
-# workspace patch.
-#
-# Adjust the path if your scaffold is nested deeper than two levels
-# above your `nockchain/` clone (matches the existing
-# `nockapp = { path = "../../../nockchain/..." }` convention).
-[patch.crates-io]
-ibig = { path = "../../../nockchain/crates/nockvm/rust/ibig" }

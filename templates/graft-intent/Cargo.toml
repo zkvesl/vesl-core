@@ -19,6 +19,3 @@ nock-noun-rs = { path = "../../crates/nock-noun-rs" }
 tokio = { version = "1.32", features = ["rt-multi-thread", "macros"] }
 anyhow = "1.0"
 sha2 = "0.10"
-
-[patch.crates-io]
-ibig = { path = "../../../nockchain/crates/nockvm/rust/ibig" }

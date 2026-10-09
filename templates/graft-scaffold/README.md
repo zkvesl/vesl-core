@@ -60,7 +60,7 @@ Requires nightly Rust (`cargo +nightly-2026-04-03 build`).
 
 ## Standalone sandbox setup
 
-The scaffold's `Cargo.toml` includes a `[patch.crates-io]` block for `ibig` that points at the nockchain-vendored version. The default path (`../../nockchain/crates/nockvm/rust/ibig`) assumes:
+The default `path = "../../nockchain/..."` lines in `Cargo.toml` assume:
 
 ```
 <parent>/
@@ -68,7 +68,7 @@ The scaffold's `Cargo.toml` includes a `[patch.crates-io]` block for `ibig` that
 └── <your-scaffold>/  # this scaffold
 ```
 
-If your sandbox is nested deeper (e.g. `<parent>/<dir>/<scaffold>/`), adjust both the `[dependencies]` `path = "../../nockchain/..."` lines AND the `[patch.crates-io]` line by adding one more `../`. The patch must resolve to the SAME ibig path as your `nockapp` / `nockvm` lines, or you'll see "multiple different versions of crate `ibig`" errors at type-check time.
+If your sandbox is nested deeper (e.g. `<parent>/<dir>/<scaffold>/`), add one more `../` to each `[dependencies]` `path = "../../nockchain/..."` line. No `[patch]` block is needed: vesl-signing's public API carries fixed-width scalars rather than `ibig::UBig`, so there is no big-number type to unify across crates.
 
 ## Using nockup?
 

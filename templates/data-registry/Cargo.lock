@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "ibig"
-version = "0.3.6"
+version = "0.1.17"
 dependencies = [
  "cfg-if",
  "num-traits",
@@ -2112,7 +2112,7 @@ dependencies = [
 
 [[package]]
 name = "murmur3"
-version = "0.5.2"
+version = "0.1.17"
 
 [[package]]
 name = "no-std-compat"
@@ -2122,7 +2122,7 @@ checksum = "b93853da6d84c2e3c7d730d6473e8817692dd89be387eb01b94d7f108ecb5b8c"
 
 [[package]]
 name = "nockapp"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "nockvm"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "autotools",
  "bincode",
@@ -2212,7 +2212,7 @@ dependencies = [
 
 [[package]]
 name = "nockvm_crypto"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "aes",
  "aes-siv",
@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "nockvm_macros"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "quote",
  "syn",
@@ -2268,7 +2268,7 @@ dependencies = [
 
 [[package]]
 name = "noun-serde"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "bytes",
  "ibig",
@@ -2280,7 +2280,7 @@ dependencies = [
 
 [[package]]
 name = "noun-serde-derive"
-version = "0.1.0"
+version = "0.1.17"
 dependencies = [
  "nockvm",
  "proc-macro2",

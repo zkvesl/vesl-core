@@ -6,8 +6,8 @@
 //! `github.com/zkvesl/vesl-wallet::vesl-signing`. This module retains
 //! the `[Belt; 8]`-flavored API that vesl-core has historically exposed
 //! to its callers (`settle.rs`, `config.rs`, `lib.rs` re-exports),
-//! translating to/from vesl-signing's `UBig`-based representation at the
-//! boundary.
+//! translating to/from vesl-signing's `Scalar` / `SchnorrSig` (eight
+//! little-endian 32-bit limbs, Hoon's t8) at the boundary.
 //!
 //! Type conversions:
 //! - `nockchain_math::belt::Belt(u64)` ↔ `vesl_signing::prelude::Belt(u64)`
@@ -29,8 +29,8 @@ use nockchain_math::crypto::cheetah::{CheetahPoint as NockCheetahPoint, F6lt as 
 use nockchain_types::tx_engine::common::{Hash, SchnorrPubkey, SchnorrSignature};
 use vesl_signing::prelude::Belt as VeslBelt;
 use vesl_signing::schnorr::{
-    CheetahPoint as VeslCheetahPoint, F6lt as VeslF6lt, SchnorrError, SchnorrPrivateKey,
-    SchnorrSignatureJson, schnorr_sign, schnorr_verify,
+    CheetahPoint as VeslCheetahPoint, F6lt as VeslF6lt, Scalar, SchnorrError, SchnorrPrivateKey,
+    SchnorrSig, SchnorrSignatureJson, schnorr_sign, schnorr_verify,
 };
 use vesl_wallet::{VESL_COIN_TYPE_PLACEHOLDER, VeslWallet, WalletError};
 use zeroize::Zeroize;
@@ -252,10 +252,10 @@ pub fn sign(sk: &[Belt; 8], message: &[Belt; 5]) -> Result<SchnorrSignature, Sig
     let belts = nock_belts8_to_vesl(sk)?;
     let key = SchnorrPrivateKey::from_belts(&belts)?;
     let m = nock_belts5_to_vesl(message);
-    let (chal, sig) = schnorr_sign(&key, &m)?;
+    let s = schnorr_sign(&key, &m)?;
     Ok(SchnorrSignature {
-        chal: ubig_to_belts8(&chal),
-        sig: ubig_to_belts8(&sig),
+        chal: vesl_belts8_to_nock(&s.chal.to_belts()),
+        sig: vesl_belts8_to_nock(&s.sig.to_belts()),
     })
 }
 
@@ -336,9 +336,14 @@ pub fn verify_chain_signature(
 ) -> bool {
     let point = nock_point_to_vesl(&pk.0);
     let m = nock_belts5_to_vesl(message);
-    let chal = belts8_to_ubig(&sig.chal);
-    let s = belts8_to_ubig(&sig.sig);
-    schnorr_verify(&point, &m, &chal, &s).is_ok()
+    // `Scalar::from_belts` keeps each limb's low 32 bits, exactly as the
+    // `belts8_to_ubig` it replaces did.
+    let to_vesl = |b: &[Belt; 8]| -> [VeslBelt; 8] { std::array::from_fn(|i| VeslBelt(b[i].0)) };
+    let s = SchnorrSig {
+        chal: Scalar::from_belts(&to_vesl(&sig.chal)),
+        sig: Scalar::from_belts(&to_vesl(&sig.sig)),
+    };
+    schnorr_verify(&point, &m, &s).is_ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +440,9 @@ pub(crate) fn belts8_to_ubig(belts: &[Belt; 8]) -> UBig {
 }
 
 /// Split a UBig into 8 × 32-bit Belt chunks (little-endian). Matches
-/// Hoon's `rip 5` with zero-padding to 8 elements.
+/// Hoon's `rip 5` with zero-padding to 8 elements. Test-only since signing
+/// moved to vesl-signing's `Scalar`.
+#[cfg(test)]
 pub(crate) fn ubig_to_belts8(val: &UBig) -> [Belt; 8] {
     let mut belts = [Belt(0); 8];
     let mut v = val.clone();
