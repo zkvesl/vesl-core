@@ -5,8 +5,8 @@
 //! a pure-Rust copy of both calculations — that copy is what lets a wallet pay
 //! without booting a 15-second kernel. Nothing checked that the two still
 //! agree. This module holds the payments we compare them on — and, since
-//! `vesl-engine` `STEP4.md` ruling 46, the notes we compare a third calculation
-//! on: a note's hash, which every payment spending it must name as its parent
+//! every seed's parent hash became the real note hash, the notes we compare a
+//! third calculation on: a note's hash, which every payment spending it must name as its parent
 //! ([`note_shapes`]).*
 //!
 //! `nockchain-types` states the problem itself and offers no mechanism for it:
@@ -14,7 +14,7 @@
 //! (`nockchain/crates/nockchain-types/src/tx_engine/v1/tx.rs:102-105`). The
 //! failure is silent twice over — a node **acks an invalid transaction and
 //! discards it** (`vesl-core/src/settle.rs:458-461`), and no suite in this
-//! fleet boots a kernel. Design: `zkML/docs/plans/x402/records/S117` `§12`.
+//! fleet boots a kernel.
 //!
 //! ⛔⛔ **THE ONE RULE THIS MODULE MUST NEVER BREAK: IT RETURNS INPUTS. IT
 //! COMPUTES NO DIGEST.** Both tiers call it — tier 1 (`tests/hoon_rust_parity.rs`,
@@ -74,8 +74,8 @@ fn signer(seed: u64) -> Signer {
     k
 }
 
-/// `[n n n n n]`, the spelling the S123 measurement used — kept identical so
-/// its kernel-authored digests reproduce here byte for byte.
+/// `[n n n n n]`, the spelling the 2026-09-03 live-kernel measurement used —
+/// kept identical so its kernel-authored digests reproduce here byte for byte.
 fn h(n: u64) -> Hash {
     Hash::from_limbs(&[n, n, n, n, n])
 }
@@ -154,11 +154,11 @@ pub fn sig_hash_subject(shape: &Shape) -> Result<Spend1> {
     })
 }
 
-/// ⭐ `XD-5`'s three-output capture, through the SHIPPED builder.
+/// ⭐ The escrow's three-output capture, through the SHIPPED builder.
 ///
-/// ⚑ These exact literals are the ones the S123 chain run measured a live
-/// kernel on, so the kernel's own answers reproduce here offline — see
-/// `tests/step0_s123.rs`. Conservation holds by construction:
+/// ⚑ These exact literals are the ones a live kernel was measured on
+/// (2026-09-03), so the kernel's own answers reproduce here offline — see
+/// `tests/kernel_anchor.rs`. Conservation holds by construction:
 /// 94.500 + 5.500 + 899.750 + 250 = 1.000.000.
 ///
 /// ⛔ [`vesl_core::settle::build_capture_seeds`] pins `output-source` itself
@@ -191,7 +191,7 @@ fn capture_seeds(out1_note_data: NoteData) -> Result<Seeds> {
 
 /// An OPAQUE note-data entry — the category our own escrow posts.
 ///
-/// ⛔⛔ **`records/S117` `§12.5` CALLS OUR ESCROW NOTE-DATA "TYPED" AND IT IS
+/// ⛔⛔ **OUR ESCROW NOTE-DATA IS EASILY TAKEN FOR "TYPED", AND IT IS
 /// NOT.** Upstream's TODO (`nockchain-types/.../v1/tx.rs:102-105`) names
 /// *"typed note-data (`%lock`, `%bridge`, `%bridge-w`)"*, and those are the
 /// three non-`Noun` variants of `NoteDataValue` (`.../v1/note.rs:117-123`),
@@ -226,7 +226,7 @@ fn typed_lock_entry() -> Result<NoteDataEntry> {
     Ok(NoteDataEntry::lock(demo_job_lock()?))
 }
 
-/// The escrow flow's three parties, on fixed keys (`STEP4.md` ruling 42).
+/// The escrow flow's three parties (buyer, platform, provider), on fixed keys.
 fn demo_parties() -> Result<vesl_core::job_locks::JobParties> {
     Ok(vesl_core::job_locks::JobParties {
         buyer_j: pkh_of(&signer(11))?,
@@ -249,12 +249,12 @@ fn demo_funding_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
 }
 
 /// The JOB note, from the shipped builder. ⚑ It carries a `%tim` with a relative
-/// MAXIMUM, which no lock this fleet built before step 4 did.
+/// MAXIMUM, which no lock this fleet built before the escrow flow did.
 fn demo_job_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     vesl_core::job_locks::job_lock(&demo_parties()?, 24, &demo_facts())
 }
 
-/// ⭐ `vesl-engine` `PT-24` (⚖️ D61): what the provider's signed closing fixed, on fixed operands — the salted input,
+/// ⭐ What the provider's signed closing fixed, on fixed operands — the salted input,
 /// ids and anchor roots, the closing value over `[P c reason]`, and the order's model pin.
 fn demo_serve_facts() -> vesl_core::job_locks::ServeFacts {
     vesl_core::job_locks::ServeFacts {
@@ -266,12 +266,12 @@ fn demo_serve_facts() -> vesl_core::job_locks::ServeFacts {
     }
 }
 
-/// The PROVIDER note, from the shipped builder, at the live window (1.152, ruling 43).
+/// The PROVIDER note, from the shipped builder, at the live chain's window (1.152 blocks).
 fn demo_provider_note_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     vesl_core::job_locks::provider_note_lock(&demo_parties()?, 1_152, &demo_facts(), &demo_serve_facts())
 }
 
-/// A provider SLICE of a bond (`vesl-engine` `plans/port/DISPUTE-DESIGN.md` §6), on fixed
+/// A provider SLICE of a bond (`vesl_core::bond_locks`), on fixed
 /// keys: the holder is the demo provider, the verdict key a fourth signer, the slasher a fifth.
 fn demo_slice_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     let p = demo_parties()?;
@@ -289,7 +289,7 @@ fn demo_slice_lock() -> Result<nockchain_types::tx_engine::v1::tx::Lock> {
     )
 }
 
-/// The drawn check's four parties (§4): the buyer's check key, the platform, its verdict
+/// The drawn check's four parties (`vesl_core::check_locks`): the buyer's check key, the platform, its verdict
 /// key and the checker.
 fn demo_check_parties() -> Result<vesl_core::check_locks::CheckParties> {
     Ok(vesl_core::check_locks::CheckParties {
@@ -301,7 +301,7 @@ fn demo_check_parties() -> Result<vesl_core::check_locks::CheckParties> {
 }
 
 /// A digest carried as note-data the way the provider note carries its facts —
-/// ⚖️ a Hoon list of five field elements (`plans/port/PROGRAM.md`, ruled 2026-09-19).
+/// a Hoon list of five field elements.
 /// ⚑ The encoder itself lives in `vesl-agent-protocol` (`job_note_data.rs`), above this
 /// crate; this is the same noun, built here on fixed operands.
 fn digest_entry(key: &str, d: &Hash) -> NoteDataEntry {
@@ -333,7 +333,7 @@ fn pkh_of(k: &Signer) -> Result<Hash> {
     vesl_core::signing::pubkey_hash(&pk).map_err(|e| anyhow::anyhow!("pubkey hash failed: {e}"))
 }
 
-/// Strip the pin, yielding the pre-row-19 value of the same payment.
+/// Strip the pin, yielding the value the same payment had before `output-source` was pinned.
 fn unpin(seeds: &Seeds) -> Seeds {
     Seeds(
         seeds
@@ -385,7 +385,7 @@ pub fn shapes() -> Result<Vec<Shape>> {
         signer: signer(11),
         is_coinbase: true,
         input_last: h(5),
-        why: "the pre-row-19 value: what every seed looked like before we pinned output-source",
+        why: "the unpinned value: what every seed looked like before we pinned output-source",
     });
     out.push(Shape {
         name: "capture-3out-pinned",
@@ -408,7 +408,7 @@ pub fn shapes() -> Result<Vec<Shape>> {
         signer: signer(11),
         is_coinbase: true,
         input_last: h(5),
-        why: "the escrow output carries note-data: the digest must see it (S117's positive control)",
+        why: "the escrow output carries note-data: the digest must see it (a live kernel's digest moved when it did)",
     });
 
     // ── 4 · GENUINELY typed note-data — upstream's named gap ────────────────
@@ -449,7 +449,7 @@ pub fn shapes() -> Result<Vec<Shape>> {
     });
 
     // ── 6 · the buyer's funding spend: the funding note + change ────────────
-    // ⚖️ `STEP4.md` ruling 42's first box, through production's builder
+    // The escrow flow's first note, the buyer's funding note, through production's builder
     // (`build_output_seeds`), on fixed operands. It replaced the retired hold +
     // deposit posting row.
     out.push(Shape {
@@ -479,9 +479,9 @@ pub fn shapes() -> Result<Vec<Shape>> {
     });
 
     // ── 7 · the capture: provider note (with its facts) + commission + change ─
-    // ⚖️ Rulings 41–44: the capture pays out AT the serve. The provider note
+    // The capture pays out AT the serve. The provider note
     // carries the job's facts as note-data under the job note's OWN version key,
-    // each digest a list of five field elements — ⭐ `PT-24` (⚖️ D61): the order, the
+    // each digest a list of five field elements: the order, the
     // weight root, and what the signed closing fixed (`vesl-agent-protocol`
     // `job_note_data.rs`, version 2).
     out.push(Shape {
@@ -530,7 +530,7 @@ pub fn shapes() -> Result<Vec<Shape>> {
 
 /// One NOTE whose `hash:nnote` the two implementations are compared on.
 ///
-/// ⚖️ `vesl-engine` `plans/port/STEP4.md` ruling 46: every seed's `parent_hash` is
+/// Every seed's `parent_hash` is
 /// now `vesl_core::note_hash::note_hash` of the spent note — a Rust copy of
 /// `hash:nnote` (`nockchain/hoon/common/tx-engine-1.hoon:594-606`), which
 /// consensus compares from `parent-hash-phase` on. A drift here is a spend the
@@ -596,9 +596,9 @@ pub fn note_shapes() -> Result<Vec<NoteShape>> {
 }
 
 /// One LOCK whose `hash:lock` the two implementations are compared on — the
-/// escrow flow's three notes (`vesl-engine` `plans/port/STEP4.md` §10), and since
-/// `PT-13` the bond's slice, a slash's two outputs and a check's three notes
-/// (`plans/port/DISPUTE-DESIGN.md` §12) — two-branch locks and ABSOLUTE `%tim`
+/// escrow flow's three notes (`vesl_core::job_locks`), and the bond's slice, a
+/// slash's two outputs and a check's three notes (`vesl_core::bond_locks`,
+/// `vesl_core::check_locks`) — two-branch locks and ABSOLUTE `%tim`
 /// bounds among them, shapes no earlier lock of ours used.
 ///
 /// ⚑ Their roots are computed on the Rust side by `nockchain-types`' own hashing,

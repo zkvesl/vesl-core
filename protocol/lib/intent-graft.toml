@@ -4,11 +4,11 @@
 # graft catalog. Every %intent-* cause arm in intent-graft.hoon crashes
 # with %intent-graft-placeholder — do not compose this into production.
 #
-# The shape here is a best-guess sketch drawn from .dev/BIFURCATE_INTENT.md.
+# The shape here is a best-guess sketch of multi-party intent coordination.
 # The Nockchain monorepo has not yet published a canonical intent
 # structure; when it does, this manifest + intent-graft.hoon get swapped
-# for the real primitive. See .dev/GRAFT_REFACTOR.md for the refactor
-# plan and docs/graft-manifest.md for the authoritative priority lattice.
+# for the real primitive. See docs/graft-manifest.md for the
+# authoritative priority lattice.
 #
 # Priority 200 sits at the low edge of the 200–299 intent band, well
 # above state (50–99) and behavior (100–149) so the architectural

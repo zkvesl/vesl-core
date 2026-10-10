@@ -14,7 +14,7 @@
 ::  the lifetime of the graft state — roots are treated as permanent
 ::  commitments. Legitimate key rotation currently requires a fresh
 ::  deployment. A signature-gated `%settle-revoke` / `%settle-rotate`
-::  cause is tracked as future work in .dev/FUTURE_WORK.md.
+::  cause is possible future work; it does not exist yet.
 ::
 ::  Usage:
 ::    /+  *settle-graft
@@ -81,7 +81,7 @@
 ::  hits it, small enough that a spammer can't brick kernel memory.
 ::  Future work: signed-envelope registration that requires a
 ::  capability token, so the cap can be lifted for high-throughput
-::  graft operators. Tracked in .dev/FUTURE_WORK.md.
+::  graft operators. Not implemented yet.
 ::
 ++  registered-cap  ^~((mul 10.000 1.000))
 ::

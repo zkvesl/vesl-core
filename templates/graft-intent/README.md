@@ -41,7 +41,7 @@ Running the binary pokes `%intent-declare` at the placeholder kernel and reports
 
 ## What the real `graft-intent` will do
 
-The intended shape (see `.dev/BIFURCATE_INTENT.md` for the full design sketch) is multi-party coordination over state transitions:
+The intended shape is multi-party coordination over state transitions:
 
 - `%intent-declare` — register an open intent under a hull, with optional expiry
 - `%intent-match` — flip an open intent to matched, after the domain verified satisfaction
@@ -57,9 +57,9 @@ The other four families in vesl's graft catalog:
 | # | Family | Status | Where |
 |---|---|---|---|
 | 1 | Commitment | Shipped | `protocol/lib/{settle,mint,guard,forge}-graft.hoon` |
-| 2 | Verification gates | Scaffolded | `.dev/01_GATE_CATALOG.md` |
-| 3 | State | Planned | `.dev/02_STATE_GRAFTS.md` |
-| 4 | Behavior | Planned | `.dev/03_BEHAVIOR_GRAFTS.md` |
+| 2 | Verification gates | Scaffolded | `protocol/lib/vesl-gates.hoon` |
+| 3 | State | Planned | `docs/graft-manifest.md` |
+| 4 | Behavior | Planned | `docs/graft-manifest.md` |
 | 5 | Intent | **Placeholder** | you are here |
 
 The authoritative lattice is in [`docs/graft-manifest.md`](../../docs/graft-manifest.md).

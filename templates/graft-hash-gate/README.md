@@ -48,7 +48,7 @@ Define your gate inline where you delegate pokes:
   (settle-poke settle.state lc hash-gate)
 ```
 
-The gate signature is `$-([note-id=@ data=* expected-root=@] ?)`. Cast `data` to your domain type, verify however you want, return a loobean. Bind `note-id` into the data if you want pre-commit protection (see `.dev/AUDIT_REPORT.md` H-03).
+The gate signature is `$-([note-id=@ data=* expected-root=@] ?)`. Cast `data` to your domain type, verify however you want, return a loobean. Bind `note-id` into the data if you want pre-commit protection (see vesl-core `docs/AUDIT_REPORT.md` H-03).
 
 ## Build & Run
 

@@ -6,8 +6,8 @@
 //! orchestrator listens for the bundled flush and routes each intent
 //! into settle-graft on its own time.
 //!
-//! v0.1 ships ONE trigger: `count`. The other two from the 03 spec
-//! (`pages`, `time`) are deferred per `vesl-nockup/.dev/03_DEFERRALS.md`.
+//! v0.1 ships ONE trigger: `count`. The other two designed triggers
+//! (`pages`, `time`) are deferred: not implemented yet.
 //!
 //! C1: `%batch-add` carries a jammed intent atom that the kernel
 //! re-cues inside its poke arm, wrapped in mule — the canonical

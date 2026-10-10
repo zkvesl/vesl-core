@@ -1,7 +1,7 @@
 # queue-graft manifest — FIFO job queue with monotonic IDs.
 #
-# Priority 70, third graft in the 50–99 state-graft band. First graft
-# in this phase with a C1 mule-wrap site (%queue-push cues an inner
+# Priority 70, third graft in the 50–99 state-graft band. First state
+# graft with a C1 mule-wrap site (%queue-push cues an inner
 # jammed body atom). `after = ["counter-graft"]` keeps the declared
 # state-band ordering explicit.
 #

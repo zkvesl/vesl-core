@@ -1,5 +1,4 @@
-//! A re-check's notes, and the demand — ⚖️ `vesl-engine` `plans/port/DISPUTE-DESIGN.md` §4,
-//! §5, §7 (rulings 63, 66, 67, 68, 76, 81, 82).
+//! A re-check's notes, and the demand.
 //!
 //! ⚑ *In plain terms: a buyer who doubts an answer funds a CHECK the same way it funded the
 //! job. Once a checker is drawn, the check's money moves into a TICKET naming that checker.
@@ -34,21 +33,21 @@
 //! still meet without a gap. ⛔ A zero absolute bound is DROPPED too
 //! (`TimelockRangeAbsolute::new`, `nockchain-types/src/tx_engine/common/mod.rs:341-345`).
 //!
-//! ⚑ **Binding refinements of the design, stated.**
-//! - §7 says CLAIM is *"checker + platform (82)"*. It is built on the platform's VERDICT key
+//! ⚑ **Design choices, stated.**
+//! - CLAIM needs the checker and the platform. It is built on the platform's VERDICT key
 //!   `Kv`, not its funding key `Kf`: with `Kf` it would name the same pair as CAPTURE-CLEAN,
 //!   and `sig-hash` does not cover the branch — so CAPTURE-CLEAN's `rel.max` would bound
-//!   nothing. Ruling 69 makes `Kv` the platform's, so ruling 82 holds.
-//! - §7 writes the ticket's report deadline as `rel.max`. It is built ABSOLUTE (`request + 240`,
-//!   §3): the ticket's address is computed before it lands, when its origin — the base of a
+//!   nothing. `Kv` is also the platform's key, so CLAIM still needs the platform.
+//! - The ticket's report deadline is built ABSOLUTE (`request + 240`), not as a relative
+//!   `rel.max`: the ticket's address is computed before it lands, when its origin — the base of a
 //!   relative bound — is not yet known, and every party can derive the request's height.
-//! - CLAIM gains `abs.max = claim_by` (§3's 1.103 after `N`'s origin), so *"a claim after
-//!   1.103"* — an ORACLE negative in §13 — is refused by the chain on the ticket's side.
-//! - RETURN opens at `report_by + 1` (§7) while CLAIM stays open to `claim_by`: a buyer that
+//! - CLAIM gains `abs.max = claim_by` (1.103 blocks after `N`'s origin), so a claim after
+//!   1.103 is refused by the chain on the ticket's side, not only by the platform.
+//! - RETURN opens at `report_by + 1` while CLAIM stays open to `claim_by`: a buyer that
 //!   takes its fee back in between spends the ticket a pending claim needs. Only the buyer
 //!   can do that, and it forfeits its own refund and slash share by it — named, not closed.
 //!
-//! ⭐ **The exit (stub register S3, S5).** `N_c`'s CLAWBACK and VOUCH-FRAUD's `%brn` become
+//! ⭐ **The exit.** `N_c`'s CLAWBACK and VOUCH-FRAUD's `%brn` become
 //! `%zkp F_vslice`; `D`'s ANSWER gains `%zkp F_answer`; `J_c`'s CLAIM gains the co-spend
 //! check. Each is a new constructor beside these and a deletion of these.
 
@@ -99,22 +98,22 @@ pub struct CheckParties {
     pub buyer_c: Hash,
     /// The platform's funding key `Kf`.
     pub platform: Hash,
-    /// The platform's verdict key `Kv` (ruling 69).
+    /// The platform's verdict key `Kv`.
     pub verdict: Hash,
-    /// The drawn checker (ruling 63).
+    /// The drawn checker; never the job's provider.
     pub checker: Hash,
 }
 
 /// What a check writes into its addresses: the PER-CHECK salted job digest (so nobody on
-/// chain can tell which checks share a job — H-2) and the job's weight root.
+/// chain can tell which checks share a job) and the job's weight root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckFacts {
     pub salted_digest: Hash,
     pub weight_root: Hash,
 }
 
-/// The check's FUNDING note `F_c` — the escrow flow's own funding shape (§2: *"a checker's
-/// job on the same flow"*), over the salted digest in place of the order digest.
+/// The check's FUNDING note `F_c` — the escrow flow's own funding shape (a checker's
+/// job runs on the same flow), over the salted digest in place of the order digest.
 pub fn check_funding_lock(
     buyer_c: &Hash,
     platform: &Hash,
@@ -126,8 +125,8 @@ pub fn check_funding_lock(
 
 /// The TICKET `J_c`, created by the co-signed move out of `F_c` once the draw names the
 /// checker. `report_by` is the absolute height of the report deadline (the request's height +
-/// 240, §3) and `claim_by` the absolute height after which no claim is included (`N`'s
-/// origin + 1.103, §3); a claim may land after the report, never before it is due, so
+/// 240) and `claim_by` the absolute height after which no claim is included (`N`'s
+/// origin + 1.103); a claim may land after the report, never before it is due, so
 /// `claim_by` must lie beyond `report_by`. ⛔ Both are operands of the address.
 pub fn ticket_lock(
     parties: &CheckParties,
@@ -171,7 +170,7 @@ pub fn ticket_lock(
 
 /// The VOUCH note `N_c`, created by a CLEAN capture. `n_origin` is the origin height of the
 /// provider note `N` this check is about, and `c` its window (1.152 live): the checker is
-/// paid from exactly the height `N`'s provider is (ruling 55). `vouched_root` is the record
+/// paid from exactly the height `N`'s provider is. `vouched_root` is the record
 /// root the checker vouched for. ⛔ All are operands of the address.
 pub fn vouch_note_lock(
     parties: &CheckParties,
@@ -220,7 +219,7 @@ pub fn demand_slot(round: u64) -> anyhow::Result<Hash> {
     Ok(Hash::from_limbs(&[DEMAND_ROUND_CORD, round, 0, 0, 0]))
 }
 
-/// A DEMAND `D` (§5). ⭐ Its address derives from the job and the round alone (H-5): the
+/// A DEMAND `D`. ⭐ Its address derives from the job and the round alone: the
 /// provider polls the addresses it can compute and ignores any other. `answer_by` is the
 /// answer window in blocks from this note's origin (24, ASSUMED). ⛔ All are operands.
 pub fn demand_lock(
@@ -234,7 +233,7 @@ pub fn demand_lock(
     anyhow::ensure!(
         provider != checker,
         "the provider and the checker are the same key: a provider may never check its own \
-         job (ruling 63), and ANSWER and EXPIRED would then both be its to spend. Refusing \
+         job, and ANSWER and EXPIRED would then both be its to spend. Refusing \
          to build it."
     );
     refuse_zero_window(answer_by, "the answer window answer_by", "ANSWER's rel.max")?;

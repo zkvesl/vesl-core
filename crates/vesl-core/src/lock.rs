@@ -29,17 +29,16 @@ use nockchain_types::tx_engine::v1::tx::{
 /// real verifying branch later changes the lock root on newly posted
 /// notes — a lock change, not a tx-shape change.
 ///
-/// ⚖️⚖️ **`payout_pkh` IS THE MINER'S KEY, NOT THE PLATFORM'S** (owner,
-/// 2026-08-25; zkML `docs/plans/lockstat` `SYSTEM §0d`, `FC-96`). Until
-/// that ruling the escrow was posted at job-posting time, before any
+/// ⛔⛔ **`payout_pkh` IS THE MINER'S KEY, NOT THE PLATFORM'S.** Until
+/// 2026-08-25 the escrow was posted at job-posting time, before any
 /// miner existed, so branch 1 could only pin a deploy constant — and a
 /// settling miner had to ask the platform's key to sign the spend it had
-/// itself composed (`DV-10`). The escrow is now created AFTER the hand-in check,
+/// itself composed. The escrow is now created AFTER the hand-in check,
 /// bound to the miner who served, so this argument is the pkh the miner
 /// declared inside what it signed, and the miner alone can spend.
 ///
 /// ⛔ **THE DESTINATION HAS THREE CONJUNCTS HERE, AND THIS SHIPS ONE.**
-/// The ruled settle condition is `[%pkh miner] ∧ [%zkp statement] ∧ [%tim
+/// The intended settle condition is `[%pkh miner] ∧ [%zkp statement] ∧ [%tim
 /// before D]`; `SpendCondition` really is an AND-list upstream, so the
 /// shape is expressible — but `%zkp` is not a lock primitive
 /// (`+lock-primitive` is a four-way `$%`: `%pkh %tim %hax %brn`,
@@ -47,7 +46,7 @@ use nockchain_types::tx_engine::v1::tx::{
 /// deadline `D` nor the refund-key holder is decided. So the statement
 /// stays on branch 2 as an unspendable placeholder and the timelock is
 /// absent. Named successor: the `%zkp` conjunct when the primitive lands,
-/// the `%tim` pair when `D` and the refund key are ruled.
+/// the `%tim` pair when `D` and the refund key are decided.
 /// ⛔ Do not add a second `%pkh` conjunct to close the gap in the
 /// meantime — two `%pkh`s in one AND-list are UNSATISFIABLE, because
 /// `check:pkh` demands the whole witness map equal its own `m`
@@ -328,9 +327,9 @@ mod tests {
         SpendCondition::simple_pkh(pkh(n))
     }
 
-    /// ⭐ **F1a — the re-aimed falsifier.**
+    /// ⭐ **The re-aimed falsifier (the `f1a_*` tests).**
     ///
-    /// `F1` as the design states it — *"a two-element signature set has a
+    /// The original concern — *"a two-element signature set has a
     /// canonical order our Rust must reproduce exactly; wrong, and the money
     /// is unspendable by anyone"* — is **already proven against Hoon** by
     /// `nockchain-types`' own `lock_hash_matches_known_hoon_vectors`, which
@@ -384,8 +383,8 @@ mod tests {
     }
 
     /// The same rule at the next arity, so the generalisation is not fitted to
-    /// one case. `XD-3` needs only `V4`, but fixing the branch count we happen
-    /// to use is the §2.2 point-2 failure one level out.
+    /// one case. The escrow needs only `V4`, but a proof fold fitted to the
+    /// branch count we happen to use would fail the moment that count changed.
     #[test]
     fn f1a_eight_branch_proofs_fold_to_the_lock_root() {
         let half = |a, b, c, d| LockV4 {
@@ -418,7 +417,7 @@ mod tests {
         }
     }
 
-    /// The half of `F1` that was already true, pinned so a future port of the
+    /// The half of that concern that was already true, pinned so a future port of the
     /// z-set cannot regress it silently. A treap keyed by `gor`/`mor` is
     /// canonical in its item set, so the two insertion orders of a 2-of-2
     /// signature set must produce the same digest — and therefore the same

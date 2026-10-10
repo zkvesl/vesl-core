@@ -21,7 +21,7 @@ name: JAM Determinism
 # squash f4fe1a8f, 2026-08-30.  · VERIFIED BY SOURCE CONTENT, not by history: a squash
 # rewrites every SHA, so `git log fork..upstream` reports dozens of "ours-only"
 # commits whether or not a line is missing, and grepping the squash message proves
-# nothing because the message LISTS what it squashed.  Record: zkML records/S24.
+# nothing because the message LISTS what it squashed.
 #
 # ⛔⛔ THE KERNEL BYTES MOVE WITH THIS BUMP, AND NOT BECAUSE OF THE COMPILER.
 # · MEASURED 2026-09-10, four kernels x two trees x two compilers:

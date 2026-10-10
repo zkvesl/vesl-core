@@ -5,13 +5,11 @@
 //! answer sheet the blockchain produced, and this test redoes the sums in Rust
 //! and compares. If they ever stop matching, a buyer would sign a number the
 //! chain throws away without saying why — a node acks the invalid payment and
-//! discards it silently. Since `vesl-engine` `STEP4.md` ruling 46 the sheet also
+//! discards it silently. Since spends name the real note hash as parent, the sheet also
 //! holds the chain's hash of four sample notes — the parent a spend names — and
 //! `the_rust_note_hash_still_matches_the_kernels_own_answer` redoes that too; since
-//! step 4 (§10) it holds the ADDRESS of the escrow flow's three notes, and
+//! the escrow flow shipped it holds the ADDRESS of the escrow flow's three notes, and
 //! `the_escrow_notes_addresses_still_match_the_kernels_own_answer` redoes those.*
-//!
-//! Design: `zkML/docs/plans/x402/records/S117` `§12.2`.
 //!
 //! ## ⛔ WHAT THIS TIER DOES **NOT** CHECK, AND WHERE THAT LIVES
 //!
@@ -217,8 +215,8 @@ fn the_rust_digests_still_match_the_kernels_own_answers() {
 /// ⭐ THE POSITIVE CONTROL, and it is measured rather than assumed.
 ///
 /// Pinning `output-source` must MOVE what the parties sign — that is the whole
-/// cost row 19 accepted, and `records/S123` `§8` `D1` measured a live kernel
-/// moving with it.
+/// cost of pinning it, and a live kernel was measured moving with it
+/// (`tests/kernel_anchor.rs`).
 ///
 /// ⛔⛔ **AND IT MOVES THE TRANSACTION ID TOO — WHICH THIS PROJECT DID NOT
 /// KNOW.** The obvious reading is that the id cannot move: `HashHashable for
@@ -231,7 +229,7 @@ fn the_rust_digests_still_match_the_kernels_own_answers() {
 ///
 /// · MEASURED here, witness held constant, so the seeds are the only variable:
 /// `4wstur6q…` → `6PkYu91m…`.
-/// ⚑ `records/S123` `§8` `D4` measured only our own STAND-IN identity
+/// ⚑ The live-kernel measurement covered only our own STAND-IN identity
 /// (`det_tx_id`), which is blind to the field by construction. The chain's own
 /// id had never been measured across the pin.
 #[test]
@@ -259,7 +257,7 @@ fn pinning_output_source_moves_both_digests() {
         sig(&u),
         sig(&p),
         "pinning output-source did NOT move the signing digest — the field is supposed to be \
-         inside what both parties sign (S123 §8 D1 measured a live kernel moving with it)"
+         inside what both parties sign (a live kernel was measured moving with it)"
     );
     assert_ne!(
         u.seeds.hash_digest().unwrap(),
@@ -271,7 +269,7 @@ fn pinning_output_source_moves_both_digests() {
 
 /// ⭐ THE OTHER POSITIVE CONTROL: note-data is genuinely inside the digest.
 ///
-/// S117 measured a live kernel moving a capture digest `DZB8Q7Lr…` →
+/// A live kernel was measured moving a capture digest `DZB8Q7Lr…` →
 /// `DHXVr1Bd…` when the escrow output's note-data went from empty to carrying
 /// entries. Without this, the agreements above could be comparing two shapes
 /// the digest never actually reads.
@@ -339,7 +337,7 @@ const DECLARED_NOTES: [&str; 4] = [
     "note-opaque-notedata", "note-other-origin", "note-plain", "note-typed-lock-notedata",
 ];
 
-/// ⚖️ `vesl-engine` `plans/port/STEP4.md` ruling 46 — the Rust `hash:nnote`
+/// The Rust `hash:nnote`
 /// (`vesl_core::note_hash`), from which every spend's parent hash now comes,
 /// against the kernel's own `%note-hash` answer recorded in the sheet.
 ///
@@ -378,7 +376,7 @@ fn the_rust_note_hash_still_matches_the_kernels_own_answer() {
              it names a parent consensus refuses (`%v1-spend-1-parent-hash-failed`).",
             shape.name
         );
-        // The defect ruling 46 closed, as a standing control: the value every
+        // The old defect, as a standing control: the value every
         // builder used to name is not the hash.
         assert_ne!(
             want, shape.note.name.last,
@@ -403,7 +401,7 @@ const DECLARED_LOCKS: [&str; 9] = [
     "lock-ticket", "lock-vouch", "lock-demand",
 ];
 
-/// ⚖️ `vesl-engine` `plans/port/STEP4.md` §10 — the escrow flow's three notes, as
+/// The escrow flow's three notes, as
 /// `vesl_core::job_locks` composes them, against the kernel's own `hash:lock`.
 ///
 /// ⚑ *In plain terms: the address the buyer's money, the job's money and the

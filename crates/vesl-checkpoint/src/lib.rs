@@ -24,10 +24,9 @@
 //! per-transition migrators) is intentionally out of scope; wait for
 //! cumulative-domain pressure to surface what shape it should take.
 //!
-//! Reference consumer: the meta-mode dogfood driver documented in
-//! `vesl-core/.dev/DOGFOOD_META.md` "Per-transition procedure" Step 5
-//! ("State-shape compatibility check") — see that doc for the
-//! `snapshot-state` / `restore-state-and-exercise` driver wiring.
+//! Reference consumer: a driver that, at each state transition, runs a
+//! state-shape compatibility check — `snapshot-state`, then
+//! `restore-state-and-exercise` against the new kernel.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;

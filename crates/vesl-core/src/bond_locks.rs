@@ -1,5 +1,4 @@
-//! The two bonds as SLICES, and the two notes a slash pays into — ⚖️ `vesl-engine`
-//! `plans/port/DISPUTE-DESIGN.md` §6, §6a, §7 (rulings 64, 72, 73, 75, 82).
+//! The two bonds as SLICES, and the two notes a slash pays into.
 //!
 //! ⚑ *In plain terms: a provider (or a checker) puts money at stake by minting many small
 //! notes in one transaction — SLICES — one for each job it may have open at once. At each
@@ -28,32 +27,31 @@
 //!
 //! ⚑ **Why each rule.**
 //! - `holder` is the provider for a provider slice and the checker for a checker slice
-//!   (ruling 64: a separate bond, the same shape). `verdict` is the platform's verdict key
-//!   `Kv` (ruling 69), `platform` its funding key `Kf`. ⛔ The four are refused equal: with
+//!   (a separate bond, the same shape). `verdict` is the platform's verdict key
+//!   `Kv`, `platform` its funding key `Kf`. ⛔ The four are refused equal: with
 //!   `verdict == platform`, SLASH and EXIT name one pair, and `sig-hash` does not cover the
 //!   branch — an exit signature would satisfy the slash and the reverse.
-//! - ⛔ **`slasher` is the holder's SLASH-ONLY key** (⚖️ owner, 2026-09-27, `vesl-engine`
-//!   `plans/port/AUDIT.md` H2), named in no other branch. While SLASH named `holder`, a stored
+//! - ⛔ **`slasher` is the holder's SLASH-ONLY key**, named in no other branch. While SLASH named `holder`, a stored
 //!   advance slash signature satisfied EXIT's holder half, so `Kf` alone completed a slash, and
 //!   FALLBACK after `t_life` needed nothing more. The holder's IDENTITY is in the terms; this
 //!   key signs, it does not identify.
 //! - ⛔ **Nobody moves a slice alone before `t_life`.** SLASH needs the slasher's advance
-//!   signature (§6a) AND the verdict; EXIT needs the holder AND the platform, which signs it
+//!   signature AND the verdict; EXIT needs the holder AND the platform, which signs it
 //!   only with no job open on that slice (policy); FALLBACK is the holder's escape if the
 //!   platform disappears, and the platform backs no job or vouch with a slice whose
-//!   `origin + t_life − 96` does not outlast that liability's window (policy, §6's gate —
-//!   `vesl-labs` `workpool::bond_gate::backs_until`, at the lease, the capture and the draw).
+//!   `origin + t_life − 96` does not outlast that liability's window (policy, the
+//!   platform's bond gate, checked at the lease, the capture and the draw).
 //! - ⚑ Two outputs to one address in one transaction MERGE (`tx-engine-1.hoon:2362-2385`),
-//!   and a posting mints every slice in ONE transaction (ruling 75) ⇒ RESERVED carries the
+//!   and a posting mints every slice in ONE transaction ⇒ RESERVED carries the
 //!   slice's `index`, so every slice of a posting has its own address. The same slot carries
 //!   the ROLE, so a provider slice and a checker slice of one holder under one terms digest
 //!   never share an address.
-//! - ⛔ **A lock cannot see an amount.** "Exactly 2× the job's pay" (ruling 73) is fixed by the
+//! - ⛔ **A lock cannot see an amount.** "Exactly 2× the job's pay" is fixed by the
 //!   holder's advance signature, which covers every output and amount
 //!   (`tx-engine-1.hoon:708-715`), not by anything here. The slice's VALUE is the platform's
-//!   to count (only exact values at exact addresses buy capacity, §6).
+//!   to count (only exact values at exact addresses buy capacity).
 //!
-//! ⭐ **The exit (stub register S1, S6).** SLASH becomes `%zkp F_slice` ∧ the platform's
+//! ⭐ **The exit.** SLASH becomes `%zkp F_slice` ∧ the platform's
 //! signature, and EXIT a covenant, when upstream ships them; FALLBACK is then removed. That is
 //! a new constructor beside this one and a deletion of this one; every slice rolls into the
 //! new template through EXIT.
@@ -84,7 +82,7 @@ pub const REWARD_BRANCH_PAY: u64 = 1;
 /// See [`REWARD_BRANCH_PAY`]. Unspendable: which job's slash it came from.
 pub const REWARD_BRANCH_TAG: u64 = 2;
 
-/// Which bond a slice belongs to (ruling 64). ⛔ Its cord is an operand of the address.
+/// Which bond a slice belongs to. ⛔ Its cord is an operand of the address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SliceRole {
     /// Covers one open job the holder serves.
@@ -118,7 +116,7 @@ pub struct SliceKeys {
     pub holder: Hash,
     /// The holder's slash-only key — SLASH's, and no other branch's.
     pub slasher: Hash,
-    /// The platform's verdict key `Kv` (ruling 69) — the oracle, temporary.
+    /// The platform's verdict key `Kv` — the oracle, temporary.
     pub verdict: Hash,
     /// The platform's funding key `Kf`.
     pub platform: Hash,
@@ -139,7 +137,7 @@ pub fn slice_slot(role: SliceRole, index: u64) -> anyhow::Result<Hash> {
 /// `terms` is the digest of the bond's terms the platform quoted (the protocol layer derives
 /// it; it is opaque here). `index` is this slice's position in its posting. `t_life` is the
 /// slice's life in blocks from its origin page, after which the holder alone may take it
-/// back (8c, ASSUMED — §6). ⛔ All three are operands of the address.
+/// back (ASSUMED value). ⛔ All three are operands of the address.
 pub fn slice_lock(
     keys: &SliceKeys,
     role: SliceRole,
@@ -171,15 +169,15 @@ pub fn slice_lock(
     Ok(four(slash, exit, fallback, reserved))
 }
 
-/// The HELD note a slash pays the rest of its slice into (§6a: *"the rest of the slice back
+/// The HELD note a slash pays the rest of its slice into (*"the rest of the slice back
 /// to the provider as change, timelocked so a slash is never a quick exit"*).
 ///
 /// `hold` is the wait in blocks from the slash's landing (1.248, the exit payout's wait,
 /// ASSUMED). ⛔ An operand of the address.
 ///
-/// ⛔ **Not forfeitable today.** `PT-14`'s whole-bond forfeit (ruling 80) would take this
-/// change too; until `PT-14` is shown the forfeit is not armed (§6b), and a forfeitable
-/// HELD is a new constructor then.
+/// ⛔ **Not forfeitable today.** A whole-bond forfeit would take this change too; that
+/// forfeit is not armed until it is shown to work, and a forfeitable HELD is a new
+/// constructor then.
 pub fn held_lock(holder: &Hash, hold: u64, terms: &Hash) -> anyhow::Result<Lock> {
     refuse_zero_window(hold, "the change's hold", "RELEASE's rel.min")?;
     let release = SpendCondition::new(vec![
@@ -193,13 +191,13 @@ pub fn held_lock(holder: &Hash, hold: u64, terms: &Hash) -> anyhow::Result<Lock>
     Ok(two(release, tag))
 }
 
-/// The REWARD note a slash pays the checker part into (§6a). The checker is unknown when
+/// The REWARD note a slash pays the checker part into. The checker is unknown when
 /// the provider signs the slash at capture, so today the verdict key holds it and pays the
-/// drawn checker (no trust beyond ruling 69); in the target, a proof that the claimant holds
-/// the drawn ticket replaces the key (stub register S1).
+/// drawn checker (no trust beyond the verdict key's); in the target, a proof that the
+/// claimant holds the drawn ticket replaces the key.
 ///
-/// `statement` is what the slash convicts: a streamed job's signed closing digest (`vesl-engine`
-/// `PT-24`, ⚖️ D64), or a voucher's vouched root.
+/// `statement` is what the slash convicts: a streamed job's signed closing digest, or a
+/// voucher's vouched root.
 pub fn reward_lock(
     verdict: &Hash,
     order_digest: &Hash,
@@ -295,7 +293,7 @@ mod tests {
         assert!(
             matches!(&b[3].0[..], [LockPrimitive::Burn, LockPrimitive::Hax(x)] if x.0.iter().count() == 2)
         );
-        // ⛔ H2: SLASH names the slasher, never the holder; EXIT and FALLBACK never the slasher.
+        // ⛔ SLASH names the slasher, never the holder; EXIT and FALLBACK never the slasher.
         assert_eq!(pkh_keys(&b[0]), vec![k.slasher.clone(), k.verdict.clone()]);
         assert_eq!(pkh_keys(&b[1]), vec![k.platform.clone(), k.holder.clone()]);
         assert_eq!(pkh_keys(&b[2]), vec![k.holder.clone()]);

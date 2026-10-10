@@ -3,7 +3,7 @@ name = "vesl-parity-corpus"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "The Hoon/Rust parity corpus and its frozen oracle (x402 board, records/S117 §12)"
+description = "The Hoon/Rust parity corpus and its frozen oracle: pins the pure-Rust sig-hash, tx-id, note hash and lock hash against the kernel's recorded answers"
 license = "MIT OR Apache-2.0"
 
 # ⛔⛔ WHY THIS IS ITS OWN CRATE AND NOT A MODULE OF `vesl-core`.

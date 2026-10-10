@@ -1,8 +1,8 @@
 ::  protocol/tests/fixtures/domain_patterns_smoke.hoon
 ::
-::  Smoke fixture for the domain-patterns library — gate for the entire
-::  03G plan. If this file fails to compile, revisit Decisions 2 and 3
-::  of vesl-nockup/.dev/03G_DOMAIN_PATTERN_HELPERS.md.
+::  Smoke fixture for the domain-patterns library — if this file
+::  fails to compile, the helpers' calling convention (wet gates over
+::  a kernel's versioned state, `<graft>.state` field names) is broken.
 ::
 ::  Confirms:
 ::    1. Wet-gate (|*) polymorphism over a kernel-defined versioned-state
@@ -11,7 +11,7 @@
 ::       compatible with multi-graft kernels — i.e. a state that has
 ::       `counter`, `kv`, `log` fields side-by-side actually works in
 ::       practice (no in-tree multi-graft template demonstrates this
-::       today; see the 03G doc's "State convention is unproven" note).
+::       today, so this fixture is the evidence).
 ::    3. =^ chaining through three different apply-<graft> arms threads
 ::       state correctly and accumulates effects in the expected order.
 ::    4. audit-write produces the welded effect list in [kv-effect,

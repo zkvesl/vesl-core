@@ -1,7 +1,7 @@
 # clock-graft manifest — deterministic event-counter clock.
 #
 # Priority 140, top of the 100–149 behavior-graft band. clock-graft and
-# log-graft are the additive pilots of Phase 03 — pure observers with
+# log-graft are the first behavior grafts — pure observers with
 # no wrapping semantics, so they ship under the existing graft-inject
 # markers (no prelude/postlude needed).
 #

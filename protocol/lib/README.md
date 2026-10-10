@@ -13,7 +13,7 @@ Grafts are grouped into five families on a priority lattice (authoritative map: 
 | `guard-graft.hoon` | 30 | Inclusion-proof verification against a registered root |
 | `forge-graft.hoon` | 40 | STARK proof of arbitrary Nock computation |
 
-Family 5 (intent) reserves a placeholder — `intent-graft.hoon` (priority 200) — whose arms crash on invocation pending a canonical upstream intent structure. Family 2 (verification gates) is a planned library of parameter arms consumed by family-1 grafts; families 3 (state) and 4 (behavior) are roadmap items documented in `.dev/02_STATE_GRAFTS.md` and `.dev/03_BEHAVIOR_GRAFTS.md`.
+Family 5 (intent) reserves a placeholder — `intent-graft.hoon` (priority 200) — whose arms crash on invocation pending a canonical upstream intent structure. Family 2 (verification gates) is a planned library of parameter arms consumed by family-1 grafts; families 3 (state) and 4 (behavior) are described in `docs/graft-manifest.md`.
 
 The support libraries (`vesl-merkle`, `vesl-prover`, `vesl-verifier`, `vesl-stark-verifier`, `vesl-entrypoint`, `rag-logic`, `vesl-lower`) are not grafts — they're the math, proof, and type plumbing that commitment grafts rely on. `vesl-entrypoint` is currently STAGED: the canonical ABI shape is present but no shipped kernel composes it yet; only the cross-vm and entrypoint tests import it.
 

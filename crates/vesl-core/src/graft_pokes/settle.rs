@@ -15,7 +15,7 @@
 //! audit fix to `verify-gate` — the graft itself extracts `note-id`
 //! from the payload and passes it to the gate.
 //!
-//! Phase 12A renamed the primitive from `vesl-graft` to `settle-graft`
+//! The primitive was renamed from `vesl-graft` to `settle-graft`
 //! across the Hoon + Rust surface. Deprecated `build_vesl_*_poke`
 //! aliases are kept for one release cycle in `crate::lib`. The
 //! `%vesl-settle` → `%settle-note` rename drops the tautological
@@ -267,23 +267,23 @@ fn build_proof_list(slab: &mut NounSlab, proof: &[ProofNode]) -> Noun {
     make_list_in(slab, &nodes)
 }
 
-// -- deprecated aliases (Phase 12A) --------------------------------------
+// -- deprecated aliases (vesl-graft → settle-graft) -----------------------
 
 /// Deprecated alias for [`build_settle_register_poke`].
 #[deprecated(
     since = "0.6.0",
-    note = "renamed in Phase 12A; use build_settle_register_poke"
+    note = "renamed with vesl-graft → settle-graft; use build_settle_register_poke"
 )]
 pub fn build_vesl_register_poke(hull: u64, root: &Tip5Hash) -> NounSlab {
     build_settle_register_poke(hull, root)
 }
 
 /// Deprecated alias for [`build_settle_note_poke`] (the `%vesl-settle`
-/// cause became `%settle-note` in Phase 12A — the new name emphasizes
+/// cause became `%settle-note` in that rename — the new name emphasizes
 /// "settle the note" and avoids the tautological `%settle-settle`).
 #[deprecated(
     since = "0.6.0",
-    note = "renamed in Phase 12A; use build_settle_note_poke"
+    note = "renamed with vesl-graft → settle-graft; use build_settle_note_poke"
 )]
 pub fn build_vesl_settle_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_note_poke(note_id, hull, root, data)
@@ -292,7 +292,7 @@ pub fn build_vesl_settle_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[
 /// Deprecated alias for [`build_settle_verify_poke`].
 #[deprecated(
     since = "0.6.0",
-    note = "renamed in Phase 12A; use build_settle_verify_poke"
+    note = "renamed with vesl-graft → settle-graft; use build_settle_verify_poke"
 )]
 pub fn build_vesl_verify_poke(note_id: u64, hull: u64, root: &Tip5Hash, data: &[u8]) -> NounSlab {
     build_settle_verify_poke(note_id, hull, root, data)

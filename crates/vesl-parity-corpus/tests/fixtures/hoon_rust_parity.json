@@ -63,7 +63,7 @@
     "capture-3out-opaque-notedata": {
       "sig_hash": "5vzxvqyHD8hwBxrZWhwWMCPGhTGZPMrWTiS7dS64tH3ewNcsWmeUjMV",
       "tx_id": "6QsUnWaH47qyTmjEEU8qP6j2kXFpedYKo5Yy8rqNHbndx9Z4hWEFY2V",
-      "why": "the escrow output carries note-data: the digest must see it (S117's positive control)"
+      "why": "the escrow output carries note-data: the digest must see it (a live kernel's digest moved when it did)"
     },
     "capture-3out-pinned": {
       "sig_hash": "3QWFpKPHpy8jcJbRJHJzp7seyCQHexNWPqMN5sUGZddisaD7nKnTHBo",
@@ -78,7 +78,7 @@
     "capture-3out-unpinned": {
       "sig_hash": "58W1NyPWnCiUNDUzjLuN2xE3DXLp91gExd3TCtB9yPsJPwkDYx9n2zi",
       "tx_id": "DdWJwaxH65MRuiQ4qSPnUUofnZG95V6cLFwtjVuTZRmBrVwV11xB341",
-      "why": "the pre-row-19 value: what every seed looked like before we pinned output-source"
+      "why": "the unpinned value: what every seed looked like before we pinned output-source"
     },
     "funding-post-2seed-pinned": {
       "sig_hash": "9Meycw8sfqx3K1SivwTwp5q3n8pDb6nuMNGzGrBzX6fG8nbzj9e4Kui",

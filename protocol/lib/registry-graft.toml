@@ -1,7 +1,7 @@
 # registry-graft manifest — strict structured registry.
 #
 # Priority 90, last graft in the 50–99 state-graft band. Heaviest
-# C1 surface of Phase 02 — both put and update cue caller-supplied
+# C1 surface of the state grafts — both put and update cue caller-supplied
 # record bytes inside the poke. `after = ["rbac-graft"]` keeps
 # state-band ordering explicit.
 #

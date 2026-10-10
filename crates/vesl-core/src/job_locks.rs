@@ -1,4 +1,4 @@
-//! The escrow flow's three notes — ⚖️ `vesl-engine` `plans/port/STEP4.md` rulings 40–50.
+//! The escrow flow's three notes.
 //!
 //! ⚑ *In plain terms: the buyer parks its money in a FUNDING note that only it and the
 //! platform can move together (or it alone, after a long wait). When a provider takes the
@@ -45,7 +45,7 @@
 //! - ⛔ `sig-hash` covers the seeds and the fee, NOT the branch revealed
 //!   (`tx-engine-1.hoon:1116-1120`). From `parent-hash-phase` a seed also names the note it
 //!   spends (`:1093-1099`, `:1260-1261`), so a signature cannot be replayed onto another
-//!   note; below it, it can (⚖️ ruling 47: named, not engineered around — `buyer_j` is a
+//!   note; below it, it can (a known limit, accepted rather than engineered around — `buyer_j` is a
 //!   per-job key, so a buyer signature never spans two jobs). Within one note, the three
 //!   parties are refused equal to one another, because two branches naming the same pair
 //!   would accept each other's signatures.
@@ -110,10 +110,10 @@ pub struct JobFacts {
     pub weight_root: Hash,
 }
 
-/// ⭐ `vesl-engine` `PT-24` (⚖️ D61, D63, `plans/port/PT24.md` §1): what the provider fixed as it served, from its
-/// signed closing — the salted roots of the committed prompt ids, the served words and the anchors
-/// (`VESL-ANCHORS-v1` §4), the closing value `hash-varlen([1, P_lo, P_hi, c_lo, c_hi, reason])`, and the order's
-/// model pin. Each is its own fact in the provider note's address (D63: no digest of digests).
+/// ⭐ What the provider fixed as it served, from its signed closing — the salted roots of the
+/// committed prompt ids, the served words and the anchors, the closing value `hash-varlen([1, P_lo, P_hi, c_lo, c_hi, reason])`, and the order's
+/// model pin. Each is its own fact in the provider note's address (no digest of digests, so each
+/// fact can be checked on its own).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServeFacts {
     pub input: Hash,
@@ -123,12 +123,12 @@ pub struct ServeFacts {
     pub model_pin: Hash,
 }
 
-/// The FUNDING note — ⚖️ ruling 42's first box. The buyer builds it; it names no provider,
+/// The FUNDING note — the first of the flow's three notes. The buyer builds it; it names no provider,
 /// because none exists yet. See the module header for the shape.
 ///
 /// `d_f` is the funding deadline in blocks, from the note's origin page: the buyer alone
 /// recovers from `d_f` on. ⛔ An operand of the address, and a PER-NETWORK value
-/// (⚖️ ruling 49) — the caller supplies it from its network's configuration.
+/// — the caller supplies it from its network's configuration.
 pub fn funding_lock(
     buyer_j: &Hash,
     platform: &Hash,
@@ -150,12 +150,12 @@ pub fn funding_lock(
     Ok(four(fast, recover, tag, padding))
 }
 
-/// The JOB note — ⚖️ ruling 42's second box, created by the co-signed MOVE out of the
+/// The JOB note — the second of the flow's three notes, created by the co-signed MOVE out of the
 /// funding note (or out of the previous job note, on a re-offer).
 ///
 /// `d_j` is the capture deadline in blocks from this note's origin page: platform +
 /// provider may capture through `d_j` inclusive, and the buyer alone recovers from `d_j + 1`.
-/// ⛔ An operand of the address and a PER-NETWORK value (⚖️ ruling 49).
+/// ⛔ An operand of the address and a PER-NETWORK value.
 pub fn job_lock(parties: &JobParties, d_j: u64, facts: &JobFacts) -> anyhow::Result<Lock> {
     refuse_distinct_parties(parties, "the job note")?;
     refuse_zero_window(d_j, "the capture deadline d_j", "CAPTURE's rel.max")?;
@@ -178,12 +178,12 @@ pub fn job_lock(parties: &JobParties, d_j: u64, facts: &JobFacts) -> anyhow::Res
     Ok(four(capture, fast, recover, tag))
 }
 
-/// The PROVIDER note — what the capture pays the provider into (⚖️ rulings 41, 43).
+/// The PROVIDER note — what the capture pays the provider into, at the moment the answer is served.
 ///
 /// `c` is the challenge window in blocks from this note's origin page (the capture's
 /// landing): the buyer + platform may claw back through `c - 1`, and the provider alone is
-/// paid from `c` on. 1.152 blocks on the live chain (ruling 43); ⛔ an operand of the
-/// address and a PER-NETWORK value (ruling 49).
+/// paid from `c` on. 1.152 blocks on the live chain; ⛔ an operand of the
+/// address and a PER-NETWORK value.
 ///
 /// `serve` is what the provider fixed as it served, from its signed closing — facts that exist only once the job
 /// has been served.

@@ -12,8 +12,7 @@ nock-noun-rs = { path = "../nock-noun-rs" }
 nockchain-client-rs = { path = "../nockchain-client-rs" }
 
 # Canonical Schnorr-over-Cheetah signing — lifted out of x402-nockchain-crypto
-# in Phase 0 W1-3 (per
-# `vesl-labs/docs/plans/shared-infrastructure/10-PHASE-0-NOW.md`).
+# into its own crate so every consumer shares one implementation.
 # `crates/vesl-core/src/signing.rs` is now a backwards-compat shim
 # that delegates to vesl-signing; existing API ([Belt; 8]-flavored
 # `derive_pubkey`/`sign`/`key_from_seed_phrase`) is preserved.

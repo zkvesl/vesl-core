@@ -1,6 +1,6 @@
 # batch-graft manifest — settlement-flush buffer.
 #
-# Phase 03e, behavior-graft band priority 145. Buffers caller-supplied
+# Behavior-graft band, priority 145. Buffers caller-supplied
 # intents and emits a single %batch-flushed effect when the configured
 # trigger fires. The downstream orchestrator (Rust side) routes each
 # bundled intent into settle-graft on its own time — amortizing on-
@@ -19,11 +19,11 @@
 #   [%batch-pending-len ~] — current pending list length
 #   [%batch-threshold ~]   — current threshold setting
 #
-# Scope (v0.1): COUNT trigger only. The .dev/03 doc envisioned three
+# Scope (v0.1): COUNT trigger only. The design calls for three
 # triggers (count / pages / time):
 #   - count : SHIPPED.
-#   - pages : DEFERRED. See .dev/03_DEFERRALS.md.
-#   - time  : DEFERRED. See .dev/03_DEFERRALS.md.
+#   - pages : DEFERRED. The kernel event-count delta is not exposed to graft state.
+#   - time  : DEFERRED. It needs clock-graft; v0.1 stays standalone.
 # v0.1 ships standalone; the time variant would add `after =
 # ["clock-graft"]` once it ships.
 #

@@ -83,9 +83,9 @@ Grafts fall into five families. The priority number both orders injection and la
 | # | Family | Role | Priority band | Status | Example grafts |
 |---|---|---|---|---|---|
 | 1 | Commitment | STARK-bearing primitives that commit data to hull-keyed roots | 10–40 | Shipped | `settle-graft` (10), `mint-graft` (20), `guard-graft` (30), `forge-graft` (40) |
-| 2 | Verification gates | Parameterized decision functions consumed by commitment grafts. Delivered as a library, not a priority-claimed graft | n/a (library) | Scaffolded | `vesl-gates.hoon` (planned — see `.dev/01_GATE_CATALOG.md`) |
+| 2 | Verification gates | Parameterized decision functions consumed by commitment grafts. Delivered as a library, not a priority-claimed graft | n/a (library) | Scaffolded | `vesl-gates.hoon` (see `[graft.gates]` below) |
 | 3 | State | Domain-keyed app-state primitives (kv, counter, queue, rbac, registry) | 50–99 | Shipped | `kv-graft` (50), `counter-graft` (60), `queue-graft` (70), `rbac-graft` (80), `registry-graft` (90) |
-| 4 | Behavior | Runtime wrappers that enforce or observe rules around other grafts | 100–149 | Planned | per `.dev/03_BEHAVIOR_GRAFTS.md` |
+| 4 | Behavior | Runtime wrappers that enforce or observe rules around other grafts | 100–149 | Planned | the behavior-graft manifests in `protocol/lib/` |
 | 5 | Intent | Multi-party coordination primitives (declare / match / cancel / expire) | 200–299 | Placeholder | `intent-graft` (200, `stability = "placeholder"`) |
 
 **Why these bands, and not something simpler:**
@@ -97,14 +97,14 @@ Grafts fall into five families. The priority number both orders injection and la
 
 **Verification gates do not claim a priority band.** They are library arms imported by commitment grafts via the reserved `[graft.gates]` extension (`gate = "name"` or `gate-chain = ["a", "b"]`). A gate is a parameter, not a stage. See the `[graft.gates]` section below.
 
-**The intent family is a placeholder.** `intent-graft.hoon` reserves the shape and band but crashes loudly on invocation. The Nockchain monorepo has not published a canonical intent structure; Vesl's placeholder will be swapped for the real primitive when upstream lands. Do not build production logic against it. See `.dev/BIFURCATE_INTENT.md` and `.dev/GRAFT_REFACTOR.md` for the reasoning.
+**The intent family is a placeholder.** `intent-graft.hoon` reserves the shape and band but crashes loudly on invocation. The Nockchain monorepo has not published a canonical intent structure; Vesl's placeholder will be swapped for the real primitive when upstream lands. Do not build production logic against it. `templates/graft-intent/README.md` sketches the intended shape.
 
 ## `[graft.blocks.*]` — injection blocks
 
 A graft contributes one block per marker it claims. Nine markers exist:
 seven content markers — `imports`, `state`, `cause`, `poke-prelude`,
 `poke`, `poke-postlude`, `peek` — plus two codegen markers
-(`domain-effect`, `effect-union`) introduced in Phase 03f Lever 1.
+(`domain-effect`, `effect-union`).
 Codegen markers are anchors for the typed effect-union pass: grafts do
 not contribute per-graft blocks at them. A content block omitted from
 the manifest is not injected for that marker — the marker is left
@@ -168,8 +168,8 @@ cause  = "settle-cause"
 Both fields are optional. `effect` names the bare Hoon type the graft
 exports for its effect variant — graft-inject splats it into the
 kernel's `+$ effect $%(...)` union under the `nockup:effect-union`
-marker. `cause` is parsed forward-compat for Phase 03f Lever 3 (cause
-destructuring); current codegen reads only `effect`.
+marker. `cause` is parsed for forward compatibility with a later cause-
+destructuring pass; current codegen reads only `effect`.
 
 Names must be kebab-case (`^[a-z][a-z0-9-]*$`) — they're spliced
 literally into Hoon source, so a malformed name surfaces as a honk
@@ -224,7 +224,7 @@ priority-sorted position they originally held.
 
 ### Auto-migration
 
-Kernels that pre-date Phase 03f (carrying a bare `+$  effect  *` line
+Kernels that pre-date the typed effect-union codegen (carrying a bare `+$  effect  *` line
 and no codegen markers) auto-migrate on the next `graft-inject` run.
 The bare line is replaced with a placeholder `+$ domain-effect` block
 and the two codegen markers; the codegen pass then takes over the
@@ -374,7 +374,7 @@ Version bumps to this schema append fields, never reshape existing ones.
 
 ## `[graft.gates]` — catalog gate selection
 
-EXPANSION Phase 01 (branch `parametize_2`) implements named-gate
+`graft-inject` implements named-gate
 selection on top of `settle-graft`'s parameterized verify-gate. Gates
 are family 2 in the lattice — a library of parameterized decision
 functions shipped from `vesl-core/protocol/lib/vesl-gates.hoon`, not
@@ -394,8 +394,8 @@ selected gate, and `[graft.blocks.imports]` gains a `/+  vesl-gates`
 line if it wasn't there already. The manifest itself is left on disk
 unchanged; the rewrite runs in memory at inject time.
 
-`gate-chain` composes AND-only in v1 (per `vesl-nockup/.dev/OVERVIEW.md`
-§Out-of-scope). Each named gate runs against the same `(note-id, data,
+`gate-chain` composes AND-only in v1; other compositions are out of
+scope. Each named gate runs against the same `(note-id, data,
 expected-root)` triple; the chain returns `%.y` iff every gate does.
 
 ### Catalog allowlist
@@ -411,7 +411,7 @@ catalog-shipped gates. Tier 1a (currently shipping):
 
 Tier 1b additions extend the allowlist as they land. Unknown names hard-
 error at discovery with the offending file path and field path
-(C2 — see `vesl-nockup/.dev/OVERVIEW.md` §Safety contracts).
+(C2 — see Safety contracts below).
 
 ### Validation rules
 
@@ -487,9 +487,26 @@ at `cnt.state` instead of `counter.state`) surface as a
 trace. Out of scope for the helpers: kernel-composite grafts (settle,
 mint, guard, forge, intent) — see the library header for rationale.
 
+## Safety contracts
+
+Two contracts that grafts and `graft-inject` hold to; comments in
+`protocol/lib/` and `crates/vesl-core/src/graft_pokes/` cite them by label.
+
+- **C1 — poke-input hygiene.** An arm that `cue`s caller-supplied bytes,
+  or casts a caller-supplied noun with `;;`, does so inside `mule` and
+  emits its graft's `%<graft>-error` effect on failure instead of
+  crashing the kernel: a crash on caller input is a denial-of-service
+  surface. Verification gates return `?` and cannot emit effects, so
+  they return `%.n` from inside their own `mule`, and `settle-graft`'s
+  outer `mule` turns any residual crash into `%settle-error`.
+- **C2 — fail at discovery, with a location.** A manifest error (an
+  unknown gate name, conflicting fields) is a hard error when
+  `graft-inject` discovers the manifest, naming the offending file path
+  and field path.
+
 ## Migration: vesl-graft → settle-graft
 
-Phase 12A (landed) renamed the `vesl-graft` package to `settle-graft`
+An earlier release renamed the `vesl-graft` package to `settle-graft`
 to align with the four-primitive taxonomy (mint / guard / settle /
 forge). The manifest moved from `vesl-graft.toml` to `settle-graft.toml`;
 `name`, `sentinel`s, and `body`s updated accordingly. Rust-side helper

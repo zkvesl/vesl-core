@@ -3,7 +3,7 @@
 # Gate signature is the post-H-03 [note-id=@ data=* expected-root=@]
 # form required by settle-graft.hoon's `verify-gate` type.
 #
-# Renamed from vesl-graft.toml in Phase 12A — see .dev/00_PARAMETIZATION.md.
+# Renamed from vesl-graft.toml when the vesl-graft package became settle-graft.
 
 [graft]
 name     = "settle-graft"

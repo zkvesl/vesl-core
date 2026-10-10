@@ -1,6 +1,6 @@
-//! ⭐ STEP 0 — reproduce, offline and in pure Rust, the two digests a REAL
-//! KERNEL produced on 2026-09-03 (`zkML/docs/plans/x402/records/S123` §8, leg
-//! `D1`). If these do not reproduce, nothing else in this crate is worth
+//! ⭐ THE ANCHOR — reproduce, offline and in pure Rust, the two digests a REAL
+//! KERNEL produced on 2026-09-03, for the unpinned and pinned capture shapes.
+//! If these do not reproduce, nothing else in this crate is worth
 //! building, so this runs first and on its own.
 //!
 //! ⚑ Why these two matter more than any value tier 2 will generate: they were
@@ -20,10 +20,10 @@
 
 use nockchain_types::tx_engine::v1::signatures::SigHashable;
 
-/// The kernel's answer for the unpinned shape (`S123` §8 `D1`, left side).
-const S123_UNPINNED: &str = "58W1NyPWnCiUNDUzjLuN2xE3DXLp91gExd3TCtB9yPsJPwkDYx9n2zi";
-/// The kernel's answer for the pinned shape (`S123` §8 `D1`, right side).
-const S123_PINNED: &str = "3QWFpKPHpy8jcJbRJHJzp7seyCQHexNWPqMN5sUGZddisaD7nKnTHBo";
+/// The kernel's answer for the unpinned shape (measured 2026-09-03).
+const KERNEL_UNPINNED: &str = "58W1NyPWnCiUNDUzjLuN2xE3DXLp91gExd3TCtB9yPsJPwkDYx9n2zi";
+/// The kernel's answer for the pinned shape (measured 2026-09-03).
+const KERNEL_PINNED: &str = "3QWFpKPHpy8jcJbRJHJzp7seyCQHexNWPqMN5sUGZddisaD7nKnTHBo";
 
 #[test]
 fn the_corpus_reproduces_the_kernels_own_digests_offline() {
@@ -50,14 +50,14 @@ fn the_corpus_reproduces_the_kernels_own_digests_offline() {
     println!("  pinned:   {pinned}");
 
     assert_eq!(
-        unpinned, S123_UNPINNED,
+        unpinned, KERNEL_UNPINNED,
         "the pure-Rust sig-hash no longer reproduces the kernel's own answer for the \
-         UNPINNED capture shape (measured on a live kernel, S123 §8 D1)"
+         UNPINNED capture shape (measured on a live kernel, 2026-09-03)"
     );
     assert_eq!(
-        pinned, S123_PINNED,
+        pinned, KERNEL_PINNED,
         "the pure-Rust sig-hash no longer reproduces the kernel's own answer for the \
-         PINNED capture shape (measured on a live kernel, S123 §8 D1)"
+         PINNED capture shape (measured on a live kernel, 2026-09-03)"
     );
     assert_ne!(
         unpinned, pinned,

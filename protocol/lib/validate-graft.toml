@@ -1,7 +1,7 @@
 # validate-graft manifest — pre-flight rule checks on poke causes.
 #
-# Phase 03c, behavior-graft band priority 100. First consumer of the
-# new [graft.blocks.poke-prelude] marker landed in 03b. Pairs the
+# Behavior-graft band, priority 100. First consumer of the
+# [graft.blocks.poke-prelude] marker. Pairs the
 # state-installable rule set with a prelude that short-circuits on
 # rule failure before the kernel's ?- switch runs.
 #
@@ -20,7 +20,7 @@
 # On rule failure the prelude returns [(list effect) state] directly,
 # ending the gate before the ?- switch — state is untouched.
 #
-# Scope (v0.1): cause-level rules ONLY. The .dev/03 doc envisioned
+# Scope (v0.1): cause-level rules ONLY. The design also calls for
 # field-level rules ([validate-graft.rules.<cause>.<field>]). That
 # requires graft-inject to read manifest config and generate kernel-
 # specific Hoon, which is a separate codegen pass not yet shipped.

@@ -64,7 +64,7 @@ pub use graft_pokes::registry::{
 // Graft poke builders — used by callers that compose grafted kernels via
 // `graft-inject` (in vesl-nockup). One submodule per primitive.
 //
-// Phase 12A renamed the settle helpers from `build_vesl_*_poke` to
+// The settle helpers were renamed from `build_vesl_*_poke` to
 // `build_settle_*_poke` to match the `%settle-*` cause-tag rename.
 // Deprecated aliases are re-exported below for one release cycle.
 pub use graft_pokes::settle::{

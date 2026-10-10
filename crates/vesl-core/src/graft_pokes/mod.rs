@@ -6,9 +6,7 @@
 //!
 //! Every commitment-bearing graft keys its trellis on `hull=@`, so
 //! signatures are uniform: `(hull, ...verb-specific...) -> NounSlab`.
-//! See vesl/docs/graft-manifest.md and the parameterization plan
-//! (vesl-nockup/.dev/00_PARAMETIZATION.md, §"Rust helper surface")
-//! for the full convention.
+//! See `docs/graft-manifest.md` for the full convention.
 
 pub mod batch;
 pub mod clock;

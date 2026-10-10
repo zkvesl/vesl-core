@@ -11,7 +11,7 @@
 //! [leaf+version leaf+origin-page hash+(hash:nname name) hash+(hash:note-data note-data) leaf+assets]
 //! ```
 //!
-//! ⛔⛔ **WHY THIS FILE EXISTS (`vesl-engine` `plans/port/STEP4.md` ruling 46).**
+//! ⛔⛔ **WHY THIS FILE EXISTS.**
 //! Every builder in the fleet set a seed's `parent_hash` to the spent note's
 //! `name.last`. `name.last` is `hash[& source ~]` — a hash of the seeds that
 //! CREATED the note — and can never equal `hash:nnote`, whose preimage differs.

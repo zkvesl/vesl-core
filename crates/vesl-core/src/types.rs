@@ -87,9 +87,8 @@ pub trait CommitmentVerifier: Send + Sync {
 }
 
 /// Deprecated alias for `CommitmentVerifier`. The original name conflated
-/// intent coordination with commitment verification — see
-/// `.dev/BIFURCATE_INTENT.md` and `.dev/GRAFT_REFACTOR.md` for the taxonomy
-/// cleanup. Will be removed in the next minor release.
+/// intent coordination with commitment verification, which are now
+/// separate graft families (see `docs/graft-manifest.md`). Will be removed in the next minor release.
 #[deprecated(
     note = "renamed to CommitmentVerifier; IntentVerifier will be removed in the next minor release"
 )]

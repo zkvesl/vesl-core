@@ -1,6 +1,6 @@
 //! Queue-graft poke builders.
 //!
-//! Queue is the third state-graft and the first under Phase 02
+//! Queue is the third state-graft and the first
 //! with a C1 mule-wrap site: `%queue-push` carries a jammed
 //! `body=@` atom that the kernel cue's inside the poke arm. Pair
 //! with the `%queue-push` / `%queue-pop` / `%queue-clear` arms
@@ -8,7 +8,7 @@
 //!
 //! Bodies are typed `*` (any noun) on the Hoon side. Callers are
 //! responsible for jamming whatever shape they want. Domain-
-//! specific shape validation belongs in a Phase 03 validate-graft,
+//! specific shape validation belongs in validate-graft,
 //! not here.
 
 use nock_noun_rs::{NounSlab, make_atom_in, make_tag_in, slab_jam_to_bytes};

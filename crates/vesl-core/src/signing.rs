@@ -271,7 +271,7 @@ pub fn pubkey_from_base58(b58: &str) -> Result<SchnorrPubkey, SigningError> {
 /// ⚑ *In plain terms: the way a public key is written down when it travels
 /// between programs.*
 ///
-/// ⛔⛔ **THIS CODEC HAD ONLY ONE DIRECTION UNTIL x402 BOARD ROW 5.** Everything
+/// ⛔⛔ **THIS CODEC ONCE HAD ONLY ONE DIRECTION.** Everything
 /// that reached a chain key came off a wire and was decoded; nothing had to
 /// PRODUCE the wire form, because the party that signs and the party that
 /// encodes were the same process. A co-signature crosses a network, so both
@@ -471,7 +471,7 @@ mod tests {
     /// ⚑ *In plain terms: a key and a signature written down for the network and
     /// read back again must be the same key and the same signature.*
     ///
-    /// ⛔ Until x402 board row 5 only the DECODING half existed, so nothing could
+    /// ⛔ Until co-signatures crossed a network only the DECODING half existed, so nothing could
     /// have caught an encoder that disagreed with it. A co-signature crosses a
     /// network, and consensus's answer to a signature that decodes to something
     /// else is silence.

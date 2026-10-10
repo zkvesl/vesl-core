@@ -1,7 +1,7 @@
 # log-graft manifest — append-only audit trail.
 #
 # Priority 130, second graft in the 100–149 behavior-graft band. Pairs
-# with clock-graft (140) as the additive pilots of Phase 03 — pure
+# with clock-graft (140) as the first behavior grafts — pure
 # observers with no wrapping semantics, so they ship under the
 # existing graft-inject markers (no prelude/postlude needed).
 #
@@ -21,10 +21,10 @@
 # Append-only by design: no %log-clear, no %log-delete. An audit log
 # that callers can rewrite is not an audit log.
 #
-# Retention is hardcoded at 100k for v0.1. The .dev/03 doc plans it as
+# Retention is hardcoded at 100k for v0.1. The design makes it
 # manifest config; that requires a graft-inject feature to propagate
-# TOML constants into .hoon source — separate from prelude/postlude
-# work in 03b. Promote later if retention tuning becomes a real ask.
+# TOML constants into .hoon source — separate from the prelude/postlude
+# markers. Promote later if retention tuning becomes a real ask.
 
 [graft]
 name     = "log-graft"
