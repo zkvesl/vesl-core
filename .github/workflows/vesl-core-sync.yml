@@ -10,17 +10,21 @@ name: vesl-core ↔ vesl-nockup sync
 # canonical default — when vesl-nockup bumps it, this workflow follows
 # without needing a parallel edit here.
 #
-# Runs on PRs that modify crates/* and on pushes to main/dev.
+# Runs on PRs that modify crates/* and on pushes to main/dev. A change to
+# jam-determinism.yml also triggers it: HONK_REV there picks the nockchain
+# tree whose Hoon this gate compares against the bundle.
 
 on:
   push:
     branches: [main, dev]
     paths:
       - 'crates/**'
+      - '.github/workflows/jam-determinism.yml'
   pull_request:
     branches: [main]
     paths:
       - 'crates/**'
+      - '.github/workflows/jam-determinism.yml'
 
 # ⚑ This workflow declares no workflow-level `env`, and in particular no
 # NOCK_PIN.  A workflow-level env of that name reaches the sync.sh step,

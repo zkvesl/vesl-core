@@ -49,7 +49,7 @@ on:
 
 env:
   NOCK_PIN: 73877be29bd1fafeeade1be7b95aebb0f64d8382
-  HONK_REV: 2bcb0b9dfd190f17252205afd1c8a067048a1ad9
+  HONK_REV: 73877be29bd1fafeeade1be7b95aebb0f64d8382
 
 jobs:
   jam-determinism:
